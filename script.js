@@ -462,6 +462,17 @@ function isCloudConfigured() {
     && typeof window.supabase === "function" && !!window.supabase.createClient;
 }
 
+function loadSupabaseLib() {
+  return new Promise((resolve, reject) => {
+    if (window.supabase && window.supabase.createClient) return resolve(true);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+    s.onload = () => resolve(!!(window.supabase && window.supabase.createClient));
+    s.onerror = () => reject(new Error("cdn-failed"));
+    document.head.appendChild(s);
+  });
+}
+
 function initCloud() {
   cloudConfigured = isCloudConfigured();
   if (cloudConfigured) {
@@ -2847,8 +2858,24 @@ async function bootApp() {
   renderTodoList();
   loadAudit();
   const csDot = document.getElementById("cloudStatus");
-  if (csDot) csDot.addEventListener("click", () => {
-    if (!db) { alert("Cloud is not configured."); return; }
+  if (csDot) csDot.addEventListener("click", async () => {
+    if (!window.AACE_CLOUD || !window.AACE_CLOUD.url || !window.AACE_CLOUD.anonKey) {
+      alert("Cloud connection settings are missing on this device (supabase-config.js was not loaded).");
+      return;
+    }
+    if (!db) {
+      try {
+        await loadSupabaseLib();
+        initCloud();
+      } catch (e) {
+        alert("Could not load the cloud library — check your internet connection, then tap the badge again.");
+        return;
+      }
+    }
+    if (!db) {
+      alert("Cloud could not be reached — check your internet connection, then tap the badge again.");
+      return;
+    }
     clearSession();
     db.auth.signOut().catch(() => {});
     location.reload();
