@@ -466,7 +466,7 @@ function loadSupabaseLib() {
   return new Promise((resolve, reject) => {
     if (window.supabase && window.supabase.createClient) return resolve(true);
     const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+    s.src = "supabase-lib.js";
     s.onload = () => resolve(!!(window.supabase && window.supabase.createClient));
     s.onerror = () => reject(new Error("cdn-failed"));
     document.head.appendChild(s);

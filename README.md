@@ -31,13 +31,14 @@ Recommended: make the repository **private** — the seed and future data are co
    - `index.html`
    - `script.js`
    - `style.css`
+   - `supabase-lib.js`
    - `supabase-config.js`
    - `supabase-schema.sql`
    - `aace logo.png`
 3. Open the repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / root. You can also *Preview* under "Actions" to confirm the build.
 4. The app will be served at `https://<your-user>.github.io/<repo>/`.
 
-The Supabase client is loaded from a CDN in `index.html`, so cloud sync needs internet; the rest of the app works offline.
+The Supabase client is bundled locally (`supabase-lib.js`), so the app needs no external CDN — it works offline except for the actual cloud/AI network calls.
 
 ## Set up Supabase (once)
 
@@ -61,6 +62,7 @@ The Supabase client is loaded from a CDN in `index.html`, so cloud sync needs in
 | `index.html` | App structure and views |
 | `script.js` | All logic — data, permissions, AI, cloud sync, audit trail |
 | `style.css` | Theme and design system |
+| `supabase-lib.js` | Bundled Supabase JS client (no external CDN needed) |
 | `supabase-config.js` | Cloud connection settings (URL + anon key) |
 | `supabase-schema.sql` | Supabase tables + Row-Level Security (run once) |
 | `aace logo.png` | App logo |
