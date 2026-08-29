@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AACE Project Dashboard – Capital Expenditure Monitoring System</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- LOGIN SCREEN -->
+  <div class="login-overlay hidden" id="loginOverlay">
+    <div class="login-box">
+      <div class="login-mark"><img src="aace logo.png" alt="AACE logo"></div>
+      <div class="login-title">AACE Project Dashboard</div>
+      <div class="login-subtitle">Capital Expenditure Monitoring System</div>
+      <form id="loginForm">
+        <div class="form-row">
+          <label>Username</label>
+          <input type="text" id="loginUser" autocomplete="username" required>
+        </div>
+        <div class="form-row">
+          <label>Password</label>
+          <input type="password" id="loginPass" autocomplete="current-password" required>
+        </div>
+        <div id="loginError" class="login-error"></div>
+        <button type="submit" class="btn btn-primary login-btn">Sign In</button>
+        <div class="login-hint">Any account created in the Users page can sign in here.</div>
+      </form>
+    </div>
+  </div>
+
+<div class="scrim hidden" id="scrim"></div>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark"><img src="aace logo.png" alt="AACE logo"></div>
+      <div class="brand-text">
+        <div class="t1">AACE</div>
+        <div class="t2">CAPITAL PROJECTS MONITORING</div>
+      </div>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a class="nav-link active" data-view="dashboard"><span class="icon">&#9635;</span><span class="label">Dashboard</span></a></li>
+      <li><a class="nav-link" data-view="projects"><span class="icon">&#128193;</span><span class="label">Projects</span></a></li>
+      <li><a class="nav-link" id="documentsLink" href="https://outlook.office.com" target="_blank" rel="noopener"><span class="icon">&#128196;</span><span class="label">Documents</span></a></li>
+      <li><a class="nav-link" data-view="users"><span class="icon">&#128101;</span><span class="label">Users</span></a></li>
+      <li><a class="nav-link" data-view="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></a></li>
+    </ul>
+    <div class="sidebar-foot">AACE Dashboard v1.0</div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" id="sidebarToggle" title="Toggle sidebar">&#9776;</button>
+        <div>
+          <h1>AACE Project Dashboard</h1>
+          <div class="subtitle">Capital Expenditure Monitoring System</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" id="addProjectBtn">+ Add New Project</button>
+        <button class="btn btn-ghost" id="downloadBtn" title="Save all projects to a .json backup file on your computer">Export Backup</button>
+        <button class="btn btn-ghost" id="importBtn" title="Restore projects from a .json backup file">Import Backup</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none;">
+        <div class="bell-wrap" title="Notifications">
+          &#128276;
+          <span class="badge-dot" id="notifCount">0</span>
+        </div>
+        <div class="profile">
+          <div class="avatar" id="userAvatar">JG</div>
+          <div class="who">
+            <div class="name" id="userName">JapongTheGreat</div>
+            <div class="role" id="userRole">Administrator</div>
+          </div>
+        </div>
+        <button class="icon-btn" id="logoutBtn" title="Sign out">&#8617;</button>
+      </div>
+    </header>
+
+    <div class="content" id="viewDashboard">
+      <div class="content-main">
+
+        <div class="updated-row">
+          <span id="saveStatus">All changes saved offline in this browser</span>
+          &nbsp;·&nbsp; Last updated: <span id="lastUpdated"></span>
+        </div>
+
+        <!-- SUMMARY CARDS -->
+        <div class="cards">
+          <div class="card">
+            <div class="ic navy">&#128193;</div>
+            <div>
+              <div class="label">Total Projects</div>
+              <div class="value" id="statTotal">0</div>
+              <div class="sub">All Projects</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic green">&#10003;</div>
+            <div>
+              <div class="label">Completed</div>
+              <div class="value" id="statCompleted">0</div>
+              <div class="sub" id="statCompletedPct">0% of total</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic amber">&#8987;</div>
+            <div>
+              <div class="label">Ongoing</div>
+              <div class="value" id="statOngoing">0</div>
+              <div class="sub" id="statOngoingPct">0% of total</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic red">!</div>
+            <div>
+              <div class="label">Delayed / Pending</div>
+              <div class="value" id="statDelayed">0</div>
+              <div class="sub" id="statDelayedPct">0% of total</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic blue">&#8369;</div>
+            <div>
+              <div class="label">Total Budget</div>
+              <div class="value" id="statBudget">₱0</div>
+              <div class="sub">Total allocation</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="filters">
+          <div class="search-box">
+            <span class="icon">&#128269;</span>
+            <input type="text" id="searchInput" placeholder="Search by project title, no., or PIC...">
+          </div>
+          <select id="filterStatus"><option value="">All Status</option></select>
+          <select id="filterDept"><option value="">All Departments</option></select>
+          <select id="filterPIC"><option value="">All PIC</option></select>
+          <button class="btn btn-ghost" id="clearFiltersBtn">Clear Filters</button>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table-card">
+          <div class="table-scroll">
+          <table id="projectTable">
+            <thead>
+              <tr>
+                <th data-sort="projectNo">Project No.</th>
+                <th data-sort="title">Project Title</th>
+                <th data-sort="department">Department</th>
+                <th data-sort="budget">Budget (Php)</th>
+                <th data-sort="statusLabel">Status</th>
+                <th data-sort="personInCharge">Person in Charge</th>
+                <th data-sort="completion">Progress</th>
+                <th data-sort="targetCompletion">Target Completion</th>
+                <th data-sort="daysPending">Days Pending</th>
+                <th data-sort="lastMovementDate">Last Movement</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+          </div>
+          <div class="table-footer">
+            <span id="tableCount">Showing 0 of 0 projects</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- DETAILS PANEL -->
+      <aside class="details-panel hidden" id="detailsPanel">
+        <div class="details-head">
+          <div>
+            <div class="pn" id="dpProjectNo">AACE-2026-000</div>
+            <h3 id="dpTitle">Project title</h3>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="btn btn-ghost btn-sm" id="dpEdit" title="Edit this project">&#9998; Edit</button>
+            <button class="close-x" id="dpClose">&times;</button>
+          </div>
+        </div>
+        <span class="badge badge-blue" id="dpStatusBadge">Status</span>
+
+        <div class="dl" style="margin-top:14px;">
+          <div class="item"><div class="k">Department</div><div class="v" id="dpDept">-</div></div>
+          <div class="item"><div class="k">Budget</div><div class="v" id="dpBudget">-</div></div>
+          <div class="item"><div class="k">Requestor</div><div class="v" id="dpRequestor">-</div></div>
+          <div class="item"><div class="k">Person in Charge</div><div class="v" id="dpPIC">-</div></div>
+          <div class="item"><div class="k">Date Submitted</div><div class="v" id="dpSubmitted">-</div></div>
+          <div class="item"><div class="k">Days Pending</div><div class="v" id="dpDaysPending">-</div></div>
+          <div class="item full"><div class="k">Current Stage</div><div class="v" id="dpCurrentStage">-</div></div>
+          <div class="item full"><div class="k">Next Stage</div><div class="v" id="dpNextStage">-</div></div>
+        </div>
+
+        <div class="panel-section-title">Project Timeline</div>
+        <ul class="timeline" id="dpTimeline"></ul>
+      </aside>
+
+    </div>
+
+    <!-- USERS VIEW -->
+    <div class="content page hidden" id="viewUsers">
+      <div class="content-main">
+        <div class="page-head">
+          <div>
+            <h2>Users</h2>
+            <div class="subtitle">Accounts that can access this dashboard</div>
+          </div>
+          <button class="btn btn-primary" id="addUserBtn">+ Add User</button>
+        </div>
+        <div class="table-card">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Display Name</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                  <th>Status</th>
+                  <th>Permissions</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS VIEW -->
+    <div class="content page hidden" id="viewSettings">
+      <div class="content-main">
+        <div class="page-head">
+          <div>
+            <h2>Settings</h2>
+            <div class="subtitle">Account, security and data preferences for this dashboard</div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Account &amp; Login</h3>
+          <p class="muted">These credentials are required to sign in to this dashboard. Changing them takes effect on the next sign-in.</p>
+          <div class="settings-grid">
+            <div class="form-row">
+              <label>Username</label>
+              <input type="text" id="setUsername">
+            </div>
+            <div class="form-row">
+              <label>Password</label>
+              <input type="text" id="setPassword">
+            </div>
+          </div>
+          <button class="btn btn-primary" id="saveCredsBtn">Save Credentials</button>
+          <div class="hint-box" id="credsMsg" style="display:none;"></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Data Management</h3>
+          <p class="muted">Back up your projects to a .json file, or restore them from an earlier backup.</p>
+          <div class="settings-actions">
+            <button class="btn btn-ghost" id="settingsExportBtn">Export Backup</button>
+            <button class="btn btn-ghost" id="settingsImportBtn">Import Backup</button>
+            <button class="btn btn-danger" id="clearDataBtn">Clear All Data</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>About</h3>
+          <p class="muted">AACE Project Dashboard &mdash; Capital Expenditure Monitoring System.<br>
+          Version 1.0 &middot; Offline-first &middot; Data is stored locally in this browser.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD PROJECT MODAL -->
+<div class="modal-overlay hidden" id="projectModal">
+  <div class="modal-box">
+    <h2 id="projectModalTitle">Add New Project</h2>
+    <div class="desc" id="projectModalDesc">Enter project cost first — the approval workflow and completion % are set automatically.</div>
+    <form id="projectForm">
+      <div class="form-row" id="projectNoField" style="display:none;">
+        <label>AACE Project No.</label>
+        <input type="text" id="f_projectNo" placeholder="e.g. AACE-2026-010">
+      </div>
+      <div class="form-row">
+        <label>Project Title</label>
+        <input type="text" id="f_title" required>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Department</label>
+          <select id="f_dept" required>
+            <option value="Admin">Admin</option>
+            <option value="Meat Preparation">Meat Preparation</option>
+            <option value="Marination">Marination</option>
+            <option value="Coldline Processing">Coldline Processing</option>
+            <option value="Hotline Kitchen">Hotline Kitchen</option>
+            <option value="Coldline Fill Seam">Coldline Fill Seam</option>            
+            <option value="Hotline Fill Seam">Hotline Fill Seam</option>
+            <option value="Retort">Retort</option>
+            <option value="Endline">Endline</option>
+            <option value="Incube">Incube</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Project Cost (M Php)</label>
+          <input type="number" step="0.01" min="0" id="f_cost" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="check-label"><input type="checkbox" id="f_construction"> This project includes construction (Archen workflow)</label>
+      </div>
+      <div class="form-row" id="workflowHint" style="display:none;">
+        <div class="hint-box" id="workflowHintText"></div>
+      </div>
+      <div class="form-row">
+        <label>Requestor</label>
+        <input type="text" id="f_requestor" required>
+      </div>
+      <div class="form-row">
+        <label>Person in Charge (current approval step)</label>
+        <select id="f_person" required>
+          <option value="">-- Enter cost first --</option>
+        </select>
+      </div>
+      <div class="form-row" id="stageSubselectWrap" style="display:none;">
+        <label>Specific Stage</label>
+        <select id="f_stageSub"></select>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Status Label</label>
+          <select id="f_statusLabel">
+            <option value="AACE Creation">AACE Creation</option>
+            <option value="Pre Bidding Request">Pre Bidding Request</option>
+            <option value="Waiting for Technical Bid">Waiting for Technical Bid</option>
+            <option value="Ongoing Technical Evaluation">Ongoing Technical Evaluation</option>
+            <option value="Waiting for SPQF">Waiting for SPQF</option>
+            <option value="Ongoing Project Review">Ongoing Project Review</option>
+            <option value="Approved">Approved</option>
+            <option value="Procurement">Procurement</option>
+            <option value="Rejected">Rejected</option>
+            <option value="Pending">Pending Requirements</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Target Completion</label>
+          <input type="date" id="f_target" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Last Movement Date</label>
+        <input type="date" id="f_lastDate" required>
+      </div>
+      <div class="form-row">
+        <label>Last Movement Note</label>
+        <textarea id="f_lastNote" placeholder="e.g. Ongoing review and approval of Division Finance"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelModalBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="projectModalSubmit">Save Project</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- USER MODAL -->
+<div class="modal-overlay hidden" id="userModal">
+  <div class="modal-box">
+    <h2 id="userModalTitle">Add User</h2>
+    <form id="userForm">
+      <div class="form-row">
+        <label>Username</label>
+        <input type="text" id="u_username" required>
+      </div>
+      <div class="form-row">
+        <label>Display Name</label>
+        <input type="text" id="u_displayName" required>
+      </div>
+      <div class="form-row">
+        <label>Password</label>
+        <input type="password" id="u_password" autocomplete="new-password">
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Role</label>
+          <input type="text" id="u_role" placeholder="e.g. Administrator">
+        </div>
+        <div class="form-row">
+          <label>Department</label>
+          <input type="text" id="u_dept" placeholder="e.g. Marination">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Status</label>
+        <select id="u_status">
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Permissions</label>
+        <div class="perm-checks">
+          <label class="check-label"><input type="checkbox" id="u_perm_view"> Can view project details</label>
+          <label class="check-label"><input type="checkbox" id="u_perm_add"> Can add new projects</label>
+          <label class="check-label"><input type="checkbox" id="u_perm_edit"> Can edit / delete projects</label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelUserBtn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
