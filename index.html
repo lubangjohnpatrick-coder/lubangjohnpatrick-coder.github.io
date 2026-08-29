@@ -1,12 +1,12 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AACE Project Dashboard – Capital Expenditure Monitoring System</title>
-<link rel="stylesheet" href="style.css">
+<title>AACE Project Dashboard â€“ Capital Expenditure Monitoring System</title>
+<link rel="stylesheet" href="style.css?v=6">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="supabase-config.js"></script>
+<script src="supabase-config.js?v=6"></script>
 </head>
 <body>
 
@@ -14,7 +14,7 @@
   <div class="login-overlay hidden" id="loginOverlay">
     <div class="login-box">
       <div class="login-brand-row">
-        <div class="login-mark"><img src="aace logo.png" alt="AACE logo"></div>
+        <div class="login-mark"><img src="aace logo.png?v=6" alt="AACE logo"></div>
         <div>
           <div class="login-title">AACE Project Dashboard</div>
           <div class="login-subtitle">Capital Expenditure Monitoring System</div>
@@ -44,7 +44,7 @@
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <div class="brand-mark"><img src="aace logo.png" alt="AACE logo"></div>
+      <div class="brand-mark"><img src="aace logo.png?v=6" alt="AACE logo"></div>
       <div class="brand-text">
         <div class="t1">AACE</div>
         <div class="t2">CAPITAL PROJECTS MONITORING</div>
@@ -106,9 +106,9 @@
 
         <div class="updated-row">
           <span id="saveStatus">All changes saved in this browser</span>
-          <span class="sep">&nbsp;·&nbsp;</span>
-          <span id="cloudStatus" class="cloud-dot off">● local only</span>
-          <span class="sep">&nbsp;·&nbsp;</span>
+          <span class="sep">&nbsp;Â·&nbsp;</span>
+          <span id="cloudStatus" class="cloud-dot off">â— local only</span>
+          <span class="sep">&nbsp;Â·&nbsp;</span>
           Last updated: <span id="lastUpdated"></span>
         </div>
 
@@ -150,7 +150,7 @@
             <div class="ic blue">&#8369;</div>
             <div>
               <div class="label">Total Budget</div>
-              <div class="value" id="statBudget">₱0</div>
+              <div class="value" id="statBudget">â‚±0</div>
               <div class="sub">Total allocation</div>
             </div>
           </div>
@@ -158,7 +158,7 @@
             <div class="ic gold">&#9873;</div>
             <div>
               <div class="label">Committed CAPEX</div>
-              <div class="value" id="statCommitted">₱0</div>
+              <div class="value" id="statCommitted">â‚±0</div>
               <div class="sub">Approved + Procurement</div>
             </div>
           </div>
@@ -277,7 +277,7 @@
             <div class="ic blue">&#8369;</div>
             <div>
               <div class="label">Total Budget</div>
-              <div class="value" id="statBudget2">₱0</div>
+              <div class="value" id="statBudget2">â‚±0</div>
               <div class="sub">Total allocation</div>
             </div>
           </div>
@@ -285,7 +285,7 @@
             <div class="ic gold">&#9873;</div>
             <div>
               <div class="label">Committed CAPEX</div>
-              <div class="value" id="statCommitted2">₱0</div>
+              <div class="value" id="statCommitted2">â‚±0</div>
               <div class="sub">Approved + Procurement</div>
             </div>
           </div>
@@ -372,7 +372,7 @@
           <button type="button" class="btn btn-sm btn-ghost" id="dpAISummaryBtn" title="Generate a short status summary with AI">&#10024; Generate</button>
         </div>
         <p class="ai-summary" id="dpAISummary">Click Generate to get an automatically written status summary for this project.</p>
-        <div class="ai-note">Runs only when you click Generate — project details are sent to the AI service once.</div>
+        <div class="ai-note">Runs only when you click Generate â€” project details are sent to the AI service once.</div>
 
         <div class="panel-section-title">
           Activity Trail
@@ -401,7 +401,7 @@
           <button class="btn btn-gold" id="genTodoAllBtn">&#9889; Generate All</button>
         </div>
 
-        <div class="hint-box" id="todoNote">Click Generate every project below (or Generate All) — the AI reads each project's status, approver and days pending, then suggests the fastest next action and a follow-up email. Nothing is sent until you click. Offline, you'll get manual coordinator suggestions instead.</div>
+        <div class="hint-box" id="todoNote">Click Generate every project below (or Generate All) â€” the AI reads each project's status, approver and days pending, then suggests the fastest next action and a follow-up email. Nothing is sent until you click. Offline, you'll get manual coordinator suggestions instead.</div>
 
         <div id="todoList" class="todo-list"></div>
       </div>
@@ -420,7 +420,7 @@
         <div class="guide-hero">
           <div>
             <h3>How a project is created</h3>
-            <p class="muted">Every project starts at <b>AACE Creation</b>. Complete the five submission documents below in order — when they are all marked <b>Done</b>, the file is ready to move to <b>Pre Bidding Request</b>. Tick them off on any project's details panel, and use <b>&#10024; AI Draft</b> to get an executive-quality starting text.</p>
+            <p class="muted">Every project starts at <b>AACE Creation</b>. Complete the five submission documents below in order â€” when they are all marked <b>Done</b>, the file is ready to move to <b>Pre Bidding Request</b>. Tick them off on any project's details panel, and use <b>&#10024; AI Draft</b> to get an executive-quality starting text.</p>
           </div>
         </div>
 
@@ -469,7 +469,7 @@
           <div class="panel">
             <div class="guide-head"><span class="gadge g4">4</span><h3>Pre Bidding Request</h3></div>
             <p class="muted">Formal request to start sourcing. With the three documents above approved, Procurement prepares and releases the inquiry to bidders.</p>
-            <p class="g-tip">&#128161; In the app this is the first status change — select Proponent &rarr; Pre-Bidding Request once all documents are Done.</p>
+            <p class="g-tip">&#128161; In the app this is the first status change â€” select Proponent &rarr; Pre-Bidding Request once all documents are Done.</p>
           </div>
           <div class="panel">
             <div class="guide-head"><span class="gadge g5">5</span><h3>CEPG Checklist</h3></div>
@@ -479,7 +479,7 @@
           <div class="panel guide-flow">
             <div class="guide-head"><span class="gadge g6">&#10003;</span><h3>Then the approval trail begins</h3></div>
             <p class="muted">Once complete, the project follows the tiered approval matrix (Plant Manager &rarr; IETS &rarr; Supply Chain &rarr; Finance &rarr; Corporate), which this dashboard tracks automatically stage by stage, percent by percent.</p>
-            <p class="g-tip">&#128161; Watch the <b>What to Do?</b> page daily — it tells you the fastest next action and draft a follow-up email for whoever holds the file.</p>
+            <p class="g-tip">&#128161; Watch the <b>What to Do?</b> page daily â€” it tells you the fastest next action and draft a follow-up email for whoever holds the file.</p>
           </div>
         </div>
       </div>
@@ -556,7 +556,7 @@
 
         <div class="settings-card">
           <h3>AI Assistant</h3>
-          <p class="muted">Optional. Adds &#10024; buttons that write status notes and summaries for you. AI only runs when you click one of those buttons — nothing is sent automatically.</p>
+          <p class="muted">Optional. Adds &#10024; buttons that write status notes and summaries for you. AI only runs when you click one of those buttons â€” nothing is sent automatically.</p>
           <div class="settings-grid">
             <div class="form-row">
               <label>Provider</label>
@@ -600,7 +600,7 @@
 <div class="modal-overlay hidden" id="projectModal">
   <div class="modal-box">
     <h2 id="projectModalTitle">Add New Project</h2>
-    <div class="desc" id="projectModalDesc">Enter project cost first — the approval workflow and completion % are set automatically.</div>
+    <div class="desc" id="projectModalDesc">Enter project cost first â€” the approval workflow and completion % are set automatically.</div>
     <form id="projectForm">
       <div class="form-row" id="projectNoField" style="display:none;">
         <label>AACE Project No.</label>
@@ -681,7 +681,7 @@
           <button type="button" class="btn btn-sm btn-ghost" id="aiGenNoteBtn" title="Have AI write this note for you">&#10024; AI Note</button>
         </label>
         <textarea id="f_lastNote" placeholder="e.g. Ongoing review and approval of Division Finance"></textarea>
-        <div class="ai-note" id="aiNoteHint" style="display:none;">Runs only when you click it — price data is sent to the AI service once.</div>
+        <div class="ai-note" id="aiNoteHint" style="display:none;">Runs only when you click it â€” price data is sent to the AI service once.</div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelModalBtn">Cancel</button>
