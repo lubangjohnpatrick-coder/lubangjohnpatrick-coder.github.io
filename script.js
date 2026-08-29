@@ -574,9 +574,9 @@ async function cloudProvisionProfile(authUser, username) {
   } catch (e) { /* non-admins cannot create profiles — Row Level Security blocks it by design */ }
 }
 
-// Admin-side self-heal: link every local user that has an existing cloud
-// account but no profile yet (creates the profile and binds it). Also
-// records the local password for future repairs.
+// Admin-side self-heal: promote every local user without a cloud account
+// yet — link existing auth accounts and CREATE a cloud account for local-
+// only users (sign-up + profile). Runs on reconnect / Sync now.
 async function repairLocalUsersToCloud() {
   if (!db || !cloudReady || !isAdmin()) return;
   const before = (await db.auth.getSession()).data.session;
@@ -587,9 +587,13 @@ async function repairLocalUsersToCloud() {
       const email = cloudEmail(lk.username);
       const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
       if (prof) { lk.id = prof.id; continue; }
-      const si = await db.auth.signInWithPassword({ email, password: lk.password });
-      if (si.error || !(si.data && si.data.user)) continue;
-      lk.id = si.data.user.id;
+      let su = await db.auth.signInWithPassword({ email, password: lk.password });
+      if (su.error || !(su.data && su.data.user)) {
+        su = await db.auth.signUp({ email, password: lk.password });
+      }
+      if (before) await db.auth.setSession({ access_token: before.access_token, refresh_token: before.refresh_token }).catch(() => { });
+      if (su.error || !(su.data && su.data.user)) continue;
+      lk.id = su.data.user.id;
       await db.from("user_profiles").upsert({
         id: lk.id,
         username: lk.username,
@@ -2489,7 +2493,7 @@ function setupLogin() {
         }
         if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
         await db.auth.signOut().catch(() => {});
-        err.textContent = "Your cloud account is active but has no profile yet. Ask the administrator to add you to the Users list, then try again.";
+        err.textContent = "Your cloud account is active but has no profile yet. Ask the administrator (or do it yourself, if you are the admin): on the app's Users page, Add this user with your name and a password. Reconnecting to the cloud will then bind it automatically.";
         return;
       }
     }
@@ -2620,7 +2624,7 @@ async function handleUserFormSubmit(e) {
       if (isCloudUser) {
         alert("Cloud accounts change their own password in Settings. Password changes for other cloud users can only be done in the Supabase dashboard. No password change was applied.");
       } else {
-        rec.password = await hashPassword(pwd);
+        rec.password = pwd;
       }
     } else {
       rec.password = existing.password || "";
@@ -2634,11 +2638,6 @@ async function handleUserFormSubmit(e) {
 
   if (findUserByUsername(username)) { alert("That username already exists."); return; }
   if (!pwd) { alert("A password is required for new users so they can sign in."); return; }
-
-  if (db && cloudConfigured && !cloudReady) {
-    alert("You are not connected to the shared cloud right now (the badge should be green). Connect first, then add the user — otherwise the account won't sync to other devices and can get lost.");
-    return;
-  }
 
   if (db && cloudReady && isAdmin()) {
     try {
@@ -2700,11 +2699,14 @@ async function handleUserFormSubmit(e) {
   }
 
   rec.username = username;
-  rec.password = await hashPassword(pwd);
+  rec.password = pwd;
   users.push(rec);
   await saveUsers();
   renderUsers();
   closeUserModal();
+  if (db && cloudConfigured) {
+    alert("'" + username + "' is saved locally. Connect to the cloud and tap Sync now — its cloud account will be created automatically.");
+  }
 }
 function setupUserEvents() {
   document.getElementById("addUserBtn").addEventListener("click", () => { if (isAdmin()) openUserModal(null); });
@@ -2960,6 +2962,7 @@ async function bootApp() {
   if (syncBtn) syncBtn.addEventListener("click", () => {
     if (!db || !cloudConfigured) { flashSaveStatus("Cloud is not set up on this device yet.", true); return; }
     syncProjectsToCloud();
+    repairLocalUsersToCloud();
   });
   if (cloudConfigured && db) {
     if (await cloudConnect()) await pullCloudUsers();
