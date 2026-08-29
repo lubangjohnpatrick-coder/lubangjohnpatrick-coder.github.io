@@ -2500,7 +2500,16 @@ function setupLogin() {
         }
         if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
         await db.auth.signOut().catch(() => {});
-        err.textContent = "Your cloud account is active but has no profile yet. Ask the administrator (or do it yourself, if you are the admin): on the app's Users page, Add this user with your name and a password. Reconnecting to the cloud will then bind it automatically.";
+        err.innerHTML = "Your cloud account is active but has no profile yet. Run this one-time rule in your Supabase SQL editor (<a href=\"https://supabase.com/dashboard/project/fmoxsqgnvfyszxcsypgb/sql/new\" target=\"_blank\" rel=\"noopener\">open SQL editor</a>, paste, Run) — then sign in again. It lets each user create their own profile on first sign-in:<br><textarea id=\"fixSql\" rows=\"4\" readonly style=\"width:100%;font-family:monospace;font-size:12px;margin-top:6px\">drop policy if exists \"user_profiles_insert\" on public.user_profiles;
+create policy \"user_profiles_insert\" on public.user_profiles
+  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user() or id = auth.uid());</textarea><br><button type=\"button\" class=\"btn\" id=\"copyFixSqlBtn\">Copy SQL</button>";
+        const cbtn = document.getElementById("copyFixSqlBtn");
+        if (cbtn) cbtn.addEventListener("click", () => {
+          const ta = document.getElementById("fixSql");
+          ta.select(); ta.setSelectionRange(0, 99999);
+          if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(() => flashSaveStatus("SQL copied — paste it in the Supabase SQL editor and Run.")).catch(() => {});
+          else document.execCommand("copy");
+        });
         return;
       }
     }
