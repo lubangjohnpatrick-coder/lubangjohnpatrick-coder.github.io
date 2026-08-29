@@ -13,12 +13,17 @@
   <!-- LOGIN SCREEN -->
   <div class="login-overlay hidden" id="loginOverlay">
     <div class="login-box">
-      <div class="login-mark"><img src="aace logo.png" alt="AACE logo"></div>
-      <div class="login-title">AACE Project Dashboard</div>
-      <div class="login-subtitle">Capital Expenditure Monitoring System</div>
+      <div class="login-brand-row">
+        <div class="login-mark"><img src="aace logo.png" alt="AACE logo"></div>
+        <div>
+          <div class="login-title">AACE Project Dashboard</div>
+          <div class="login-subtitle">Capital Expenditure Monitoring System</div>
+        </div>
+      </div>
+      <div class="login-rule"></div>
       <form id="loginForm">
         <div class="form-row">
-          <label>Username</label>
+          <label>Username</label> 
           <input type="text" id="loginUser" autocomplete="username" required>
         </div>
         <div class="form-row">
@@ -46,13 +51,17 @@
       </div>
     </div>
     <ul class="sidebar-nav">
+      <div class="nav-section">Operations</div>
       <li><a class="nav-link active" data-view="dashboard"><span class="icon">&#9635;</span><span class="label">Dashboard</span></a></li>
       <li><a class="nav-link" data-view="projects"><span class="icon">&#128193;</span><span class="label">Projects</span></a></li>
-      <li><a class="nav-link" id="documentsLink" href="https://outlook.office.com" target="_blank" rel="noopener"><span class="icon">&#128196;</span><span class="label">Documents</span></a></li>
+      <li><a class="nav-link" data-view="todo"><span class="icon">&#128161;</span><span class="label">What to Do?</span></a></li>
+      <li><a class="nav-link" data-view="guide"><span class="icon">&#128214;</span><span class="label">AACE Guide</span></a></li>
+      <li><a class="nav-link" id="documentsLink" href="https://smcsmits-my.sharepoint.com/:f:/r/personal/jlubang_sanmiguel_com_ph/Documents/AACE%20Documents?d=w7e6dcbcbc0454014867910d101d6f059&csf=1&web=1&e=JKLs14" target="_blank" rel="noopener"><span class="icon">&#128196;</span><span class="label">Documents</span></a></li>
+      <div class="nav-section">Administration</div>
       <li><a class="nav-link" data-view="users"><span class="icon">&#128101;</span><span class="label">Users</span></a></li>
       <li><a class="nav-link" data-view="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></a></li>
     </ul>
-    <div class="sidebar-foot">AACE Dashboard v1.0</div>
+    <div class="sidebar-foot">AACE Capital Projects System<br><b>v1.0</b> &middot; Offline-first &middot; Cloud-sync ready</div>
   </aside>
 
   <!-- MAIN -->
@@ -67,6 +76,7 @@
         </div>
       </div>
       <div class="topbar-right">
+        <button class="btn btn-gold" id="topAIDraftBtn" title="Go straight to the AI Justification Support drafter">&#10024; AI Draft</button>
         <button class="btn btn-primary" id="addProjectBtn">+ Add New Project</button>
         <button class="btn btn-ghost" id="downloadBtn" title="Save all projects to a .json backup file on your computer">Export Backup</button>
         <button class="btn btn-ghost" id="importBtn" title="Restore projects from a .json backup file">Import Backup</button>
@@ -81,6 +91,11 @@
             <div class="name" id="userName">JapongTheGreat</div>
             <div class="role" id="userRole">Administrator</div>
           </div>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-date">
+          <div class="d" id="topbarDate"></div>
+          <div class="s">Portfolio Status</div>
         </div>
         <button class="icon-btn" id="logoutBtn" title="Sign out">&#8617;</button>
       </div>
@@ -139,6 +154,141 @@
               <div class="sub">Total allocation</div>
             </div>
           </div>
+          <div class="card fin">
+            <div class="ic gold">&#9873;</div>
+            <div>
+              <div class="label">Committed CAPEX</div>
+              <div class="value" id="statCommitted">₱0</div>
+              <div class="sub">Approved + Procurement</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- EXECUTIVE CHARTS -->
+        <div class="panel-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>CAPEX by Department</h3>
+                <div class="subtitle">Total allocation drafted per business unit</div>
+              </div>
+            </div>
+            <div id="chartDeptBars" class="hbar-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Portfolio Status Mix</h3>
+                <div class="subtitle">Share of the portfolio by lifecycle stage</div>
+              </div>
+            </div>
+            <div id="chartStatusDonut" class="donut-wrap"></div>
+          </div>
+        </div>
+
+        <!-- MANAGEMENT INSIGHTS -->
+        <div class="panel-grid even">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Management Attention</h3>
+                <div class="subtitle">Projects awaiting action or at risk</div>
+              </div>
+            </div>
+            <div id="insightList" class="insight-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Largest Capital Allocations</h3>
+                <div class="subtitle">Top commitments by budget value</div>
+              </div>
+            </div>
+            <div id="topList" class="insight-list"></div>
+          </div>
+        </div>
+
+        <!-- AI PORTFOLIO STATUS UPDATE -->
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>AI Status Update</h3>
+              <div class="subtitle">Ready-to-share portfolio update written from current statuses</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-sm btn-gold" id="genSummaryBtn">&#10024; Generate</button>
+              <button class="btn btn-sm btn-ghost" id="copySummaryBtn" style="display:none;">&#128203; Copy</button>
+              <button class="btn btn-sm btn-ghost" id="pdfSummaryBtn" style="display:none;">&#128196; Save as PDF</button>
+            </div>
+          </div>
+          <div class="hint-box" id="summaryHint">Writes a full portfolio status update from your projects&#8217; statuses &#8212; headline, one line per project grouped by stage, and management flags. Runs only when you click Generate.</div>
+          <pre class="summary-out" id="summaryOut">No update generated yet.</pre>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PROJECTS VIEW -->
+    <div class="content page hidden" id="viewProjects">
+      <div class="content-main">
+
+        <div class="page-head">
+          <div>
+            <h2>Projects</h2>
+            <div class="subtitle">Capital projects register with approval status</div>
+          </div>
+        </div>
+
+        <!-- SUMMARY CARDS -->
+        <div class="cards">
+          <div class="card">
+            <div class="ic navy">&#128193;</div>
+            <div>
+              <div class="label">Total Projects</div>
+              <div class="value" id="statTotal2">0</div>
+              <div class="sub">All Projects</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic green">&#10003;</div>
+            <div>
+              <div class="label">Completed</div>
+              <div class="value" id="statCompleted2">0</div>
+              <div class="sub" id="statCompletedPct2">0% of total</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic amber">&#8987;</div>
+            <div>
+              <div class="label">Ongoing</div>
+              <div class="value" id="statOngoing2">0</div>
+              <div class="sub" id="statOngoingPct2">0% of total</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic red">!</div>
+            <div>
+              <div class="label">Delayed / Pending</div>
+              <div class="value" id="statDelayed2">0</div>
+              <div class="sub" id="statDelayedPct2">0% of total</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ic blue">&#8369;</div>
+            <div>
+              <div class="label">Total Budget</div>
+              <div class="value" id="statBudget2">₱0</div>
+              <div class="sub">Total allocation</div>
+            </div>
+          </div>
+          <div class="card fin">
+            <div class="ic gold">&#9873;</div>
+            <div>
+              <div class="label">Committed CAPEX</div>
+              <div class="value" id="statCommitted2">₱0</div>
+              <div class="sub">Approved + Procurement</div>
+            </div>
+          </div>
         </div>
 
         <!-- FILTERS -->
@@ -155,6 +305,9 @@
 
         <!-- TABLE -->
         <div class="table-card">
+          <div class="table-head-strip">
+            <h3>Capital Projects Register</h3>
+          </div>
           <div class="table-scroll">
           <table id="projectTable">
             <thead>
@@ -207,10 +360,129 @@
           <div class="item full"><div class="k">Next Stage</div><div class="v" id="dpNextStage">-</div></div>
         </div>
 
+        <div class="panel-section-title">AACE Creation Documents</div>
+        <div class="aace-docs" id="dpAACEDocs"></div>
+        <div class="aace-docs-note">Tick each item as it is completed &#8212; status changes are logged to the Activity Trail. AI can draft the Justification Support, Scope of Work and Technical Operating Requirements.</div>
+
         <div class="panel-section-title">Project Timeline</div>
         <ul class="timeline" id="dpTimeline"></ul>
+
+        <div class="panel-section-title">
+          AI Summary
+          <button type="button" class="btn btn-sm btn-ghost" id="dpAISummaryBtn" title="Generate a short status summary with AI">&#10024; Generate</button>
+        </div>
+        <p class="ai-summary" id="dpAISummary">Click Generate to get an automatically written status summary for this project.</p>
+        <div class="ai-note">Runs only when you click Generate — project details are sent to the AI service once.</div>
+
+        <div class="panel-section-title">
+          Activity Trail
+          <button type="button" class="btn btn-sm btn-ghost" id="dpAuditAddBtn" title="Record a previous movement">&#43; Add entry</button>
+        </div>
+        <div class="audit-add hidden" id="dpAuditAdd">
+          <textarea id="dpAuditText" rows="2" placeholder="e.g. SPQF sent to Procurement on 03/15, awaiting release"></textarea>
+          <div class="btn-row">
+            <button type="button" class="btn btn-sm btn-primary" id="dpAuditSave">Save</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="dpAuditCancel">Cancel</button>
+          </div>
+        </div>
+        <ul class="audit-list" id="dpAudit"></ul>
       </aside>
 
+    </div>
+
+    <!-- WHAT TO DO? VIEW -->
+    <div class="content page hidden" id="viewTodo">
+      <div class="content-main">
+        <div class="page-head">
+          <div>
+            <h2>What to Do?</h2>
+            <div class="subtitle">AI-recommended next actions for the projects in your pipeline</div>
+          </div>
+          <button class="btn btn-gold" id="genTodoAllBtn">&#9889; Generate All</button>
+        </div>
+
+        <div class="hint-box" id="todoNote">Click Generate every project below (or Generate All) — the AI reads each project's status, approver and days pending, then suggests the fastest next action and a follow-up email. Nothing is sent until you click. Offline, you'll get manual coordinator suggestions instead.</div>
+
+        <div id="todoList" class="todo-list"></div>
+      </div>
+    </div>
+
+    <!-- AACE GUIDE VIEW -->
+    <div class="content page hidden" id="viewGuide">
+      <div class="content-main">
+        <div class="page-head">
+          <div>
+            <h2>AACE Guide</h2>
+            <div class="subtitle">What every AACE Creation document means and how to complete it</div>
+          </div>
+        </div>
+
+        <div class="guide-hero">
+          <div>
+            <h3>How a project is created</h3>
+            <p class="muted">Every project starts at <b>AACE Creation</b>. Complete the five submission documents below in order — when they are all marked <b>Done</b>, the file is ready to move to <b>Pre Bidding Request</b>. Tick them off on any project's details panel, and use <b>&#10024; AI Draft</b> to get an executive-quality starting text.</p>
+          </div>
+        </div>
+
+        <div class="guide-grid">
+          <div class="panel">
+            <div class="guide-head"><span class="gadge g1">1</span><h3>Justification Support</h3></div>
+            <p class="muted">The business case that answers <i>why</i>. Explain the current limitation, the operational or financial impact, the proposed intervention, the benefits, and the cost/payback. Finance and management read only this document to decide whether the CAPEX moves forward.</p>
+            <p class="g-tip">&#128161; Draft it instantly below in your company's house format (from the Buggy Carts / Block Cutter samples) and save it to the project.</p>
+            <div class="js-draft-panel">
+              <label class="jsd-label">For project</label>
+              <select id="guideProjSel"></select>
+              <div class="docbtns">
+                <button class="btn btn-sm btn-gold" id="guideDraftBtn" title="Draft the Justification Support with AI">&#10024; AI Draft</button>
+                <button class="btn btn-sm btn-ghost" id="guideCopyBtn" style="display:none;" title="Copy the text">&#128203; Copy</button>
+                <button class="btn btn-sm btn-ghost" id="guideSaveBtn" style="display:none;" title="Save your edits to the project">Save</button>
+                <button class="btn btn-sm btn-ghost" id="guideOpenBtn" title="Open the details panel for this project">&#128065; Open panel</button>
+                <span class="da-status" id="guideDraftStatus"></span>
+              </div>
+              <textarea id="guideDraftTa" rows="7" placeholder="Click AI Draft, or type the document here..."></textarea>
+              <div class="aace-docs-note">Drafts are saved to the selected project. Use &#128065; Open panel to jump straight to its details.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="guide-head"><span class="gadge g2">2</span><h3>Scope of Work</h3></div>
+            <p class="muted">Defines <i>what will be delivered</i>: the deliverables, inclusions and exclusions, site conditions, interfaces with existing lines, installation, commissioning and acceptance criteria. Engineering uses this to evaluate bids.</p>
+            <p class="g-tip">&#128161; Draft it instantly in the company's clause format (Machine/Equipment Delivery &middot; Services and Warranty &middot; Commissioning and Training).</p>
+            <div class="js-draft-panel">
+              <label class="jsd-label">For project</label>
+              <select id="gsowProjSel"></select>
+              <div class="docbtns">
+                <button class="btn btn-sm btn-gold" id="gsowDraftBtn" title="Draft the Scope of Work with AI">&#10024; AI Draft</button>
+                <button class="btn btn-sm btn-ghost" id="gsowCopyBtn" style="display:none;" title="Copy the text">&#128203; Copy</button>
+                <button class="btn btn-sm btn-ghost" id="gsowSaveBtn" style="display:none;" title="Save your edits to the project">Save</button>
+                <button class="btn btn-sm btn-ghost" id="gsowOpenBtn" title="Open the details panel for this project">&#128065; Open panel</button>
+                <span class="da-status" id="gsowDraftStatus"></span>
+              </div>
+              <textarea id="gsowDraftTa" rows="7" placeholder="Click AI Draft, or type the document here..."></textarea>
+              <div class="aace-docs-note">Drafts are saved to the selected project as its Scope of Work. Use &#128065; Open panel to jump straight to its details.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="guide-head"><span class="gadge g3">3</span><h3>Technical Operating Requirements</h3></div>
+            <p class="muted">The <i>how it must perform</i> specification: capacity, materials of construction, utility demands, product compatibility, safety, hygiene/cGMP, and compliance with plant standards. This becomes the technical basis for evaluation and trials.</p>
+            <p class="g-tip">&#128161; List measurable requirements (e.g. &ge; 3 t/hr, stainless contact parts) so the Technical Evaluation is objective.</p>
+          </div>
+          <div class="panel">
+            <div class="guide-head"><span class="gadge g4">4</span><h3>Pre Bidding Request</h3></div>
+            <p class="muted">Formal request to start sourcing. With the three documents above approved, Procurement prepares and releases the inquiry to bidders.</p>
+            <p class="g-tip">&#128161; In the app this is the first status change — select Proponent &rarr; Pre-Bidding Request once all documents are Done.</p>
+          </div>
+          <div class="panel">
+            <div class="guide-head"><span class="gadge g5">5</span><h3>CEPG Checklist</h3></div>
+            <p class="muted">The Capital Expenditure Project Guide completeness check: confirms every required attachment (justification, SOW, TOR, cost estimates, approvals routing) is present and correctly named before the file leaves the plant.</p>
+            <p class="g-tip">&#128161; Keep this marked <b>Doing</b> until every attachment has an owner and a completed box in the checklist.</p>
+          </div>
+          <div class="panel guide-flow">
+            <div class="guide-head"><span class="gadge g6">&#10003;</span><h3>Then the approval trail begins</h3></div>
+            <p class="muted">Once complete, the project follows the tiered approval matrix (Plant Manager &rarr; IETS &rarr; Supply Chain &rarr; Finance &rarr; Corporate), which this dashboard tracks automatically stage by stage, percent by percent.</p>
+            <p class="g-tip">&#128161; Watch the <b>What to Do?</b> page daily — it tells you the fastest next action and draft a follow-up email for whoever holds the file.</p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- USERS VIEW -->
@@ -283,9 +555,41 @@
         </div>
 
         <div class="settings-card">
-          <h3>About</h3>
+          <h3>AI Assistant</h3>
+          <p class="muted">Optional. Adds &#10024; buttons that write status notes and summaries for you. AI only runs when you click one of those buttons — nothing is sent automatically.</p>
+          <div class="settings-grid">
+            <div class="form-row">
+              <label>Provider</label>
+              <select id="aiProvider">
+                <option value="gemini">Google Gemini (free)</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Gemini API Key</label>
+              <input type="password" id="aiKey" placeholder="Paste your API key (AI Studio: aistudio.google.com/apikey)">
+            </div>
+            <div class="form-row">
+              <label>Model</label>
+              <input type="text" id="aiModel" placeholder="gemini-3.5-flash">
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="btn btn-primary" id="saveAIBtn">Save AI Settings</button>
+            <button class="btn btn-ghost" id="testAIBtn">Test Connection</button>
+          </div>
+          <div class="hint-box" id="aiMsg" style="display:none;"></div>
+        </div>
+
+        <div class="settings-card">
+          <h3>About &amp; System Architecture</h3>
           <p class="muted">AACE Project Dashboard &mdash; Capital Expenditure Monitoring System.<br>
-          Version 1.0 &middot; Offline-first &middot; Data is stored locally in this browser.</p>
+          Version 1.0 &middot; Offline-first &middot; Multimedia division of labor across Finance, Engineering, Management and IT.</p>
+          <div class="arch-stack">
+            <div class="arch-layer"><span class="pl pl-pres">PRESENTATION</span><span>Executive dashboard, project register, detail dossier, responsive UI</span></div>
+            <div class="arch-layer"><span class="pl pl-app">APPLICATION</span><span>Approval workflow engine, permissions, AI assistant, reporting &amp; backups</span></div>
+            <div class="arch-layer"><span class="pl pl-data">DATA</span><span>Browser database (localStorage) &middot; JSON export / import</span></div>
+            <div class="arch-layer cloud"><span class="pl pl-cloud">CLOUD (OPTIONAL)</span><span>Supabase shared sync &middot; Row-Level Security &middot; hashed credentials</span></div>
+          </div>
         </div>
       </div>
     </div>
@@ -373,8 +677,11 @@
         <input type="date" id="f_lastDate" required>
       </div>
       <div class="form-row">
-        <label>Last Movement Note</label>
+        <label>Last Movement Note
+          <button type="button" class="btn btn-sm btn-ghost" id="aiGenNoteBtn" title="Have AI write this note for you">&#10024; AI Note</button>
+        </label>
         <textarea id="f_lastNote" placeholder="e.g. Ongoing review and approval of Division Finance"></textarea>
+        <div class="ai-note" id="aiNoteHint" style="display:none;">Runs only when you click it — price data is sent to the AI service once.</div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="cancelModalBtn">Cancel</button>

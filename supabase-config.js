@@ -1,6 +1,15 @@
 /* ============================================================
    AACE PROJECT DASHBOARD — cloud connection settings
    ============================================================
+   This file is MEANT to be committed and uploaded with the app
+   (e.g. to GitHub Pages). The values below are PUBLIC by design:
+     - the Project URL is not sensitive;
+     - the "anon" / "publishable" key lets anyone send requests,
+       but the Row-Level Security rules in supabase-schema.sql
+       block anonymous reads/writes.
+   NEVER replace the anon key with the service_role secret key —
+   that one must stay in the Supabase dashboard only.
+
    STEP 1 — Sign up and create a free project
      1. Open https://supabase.com and click "Start your project"
         (free tier is fine; no credit card needed).
@@ -15,14 +24,13 @@
      6. Copy the "anon public" key
         (looks like:  eyJhbGciOiJIUzI1NiIs...
         — this key is MEANT to be public; security comes from the
-        Row Level Security rules in supabase-schema.sql.
-        NEVER copy the "service_role" secret key anywhere.)
+        Row Level Security rules in supabase-schema.sql.)
 
    STEP 3 — Paste them below  (keep the quotes!)
    ============================================================ */
 var AACE_CLOUD = {
-  url: "https://YOUR-PROJECT-REF.supabase.co",   /* replace me */
-  anonKey: "YOUR-ANON-PUBLIC-KEY"                /* replace me */
+  url: "https://fmoxsqgnvfyszxcsypgb.supabase.co",
+  anonKey: "sb_publishable_7t0973gQ1FjqXdsjXLhrOw_toMu8dwM"
 };
 
 /* After saving: run the setup SQL once (supabase-schema.sql) in
