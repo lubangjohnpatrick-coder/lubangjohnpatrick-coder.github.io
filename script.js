@@ -269,12 +269,21 @@ function computeProjectCounter(list) {
 
 // Push the local project list to the shared database (and pull anything we missed).
 function syncProjectsToCloud() {
-  if (!db || !cloudReady) {
-    flashSaveStatus("Saved " + (cloudConfigured ? "offline — will sync when back online" : "in this browser") + " · " + timeNow(), !!cloudConfigured);
+  if (!db) {
+    flashSaveStatus("Saved in this browser · " + timeNow());
     return;
   }
   (async () => {
     try {
+      const sess = await db.auth.getSession();
+      if (sess.error || !sess.data.session) {
+        flashSaveStatus("Saved in this browser — sign in (or reconnect the cloud toggle) to share across devices · " + timeNow(), true);
+        return;
+      }
+      if (!cloudReady) {
+        cloudReady = true;
+        setCloudStatus(true, "shared cloud");
+      }
       const deleted = pendingCloudDeletes();
       const { data, error } = await db.from("projects").select("id, data");
       if (error) throw error;
