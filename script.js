@@ -580,19 +580,20 @@ async function cloudProvisionProfile(authUser, username) {
 async function repairLocalUsersToCloud() {
   if (!db || !cloudReady || !isAdmin()) return;
   const before = (await db.auth.getSession()).data.session;
+  const fixed = [], blocked = [];
   for (const lk of users.slice()) {
     if (!lk || !lk.username || lk.id) continue;
     if (!lk.password) continue;
     try {
       const email = cloudEmail(lk.username);
       const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
-      if (prof) { lk.id = prof.id; continue; }
+      if (prof) { lk.id = prof.id; fixed.push(lk.username); continue; }
       let su = await db.auth.signInWithPassword({ email, password: lk.password });
       if (su.error || !(su.data && su.data.user)) {
         su = await db.auth.signUp({ email, password: lk.password });
       }
       if (before) await db.auth.setSession({ access_token: before.access_token, refresh_token: before.refresh_token }).catch(() => { });
-      if (su.error || !(su.data && su.data.user)) continue;
+      if (su.error || !(su.data && su.data.user)) { blocked.push(lk.username); continue; }
       lk.id = su.data.user.id;
       await db.from("user_profiles").upsert({
         id: lk.id,
@@ -603,11 +604,17 @@ async function repairLocalUsersToCloud() {
         status: lk.status || "Active",
         perms: lk.perms || { view: true, add: false, edit: false }
       }, { onConflict: "id" });
-    } catch (e2) { /* keep trying the next user */ }
+      fixed.push(lk.username);
+    } catch (e2) { blocked.push(lk.username); }
   }
   if (before) await db.auth.setSession({ access_token: before.access_token, refresh_token: before.refresh_token }).catch(() => { });
   saveUsers();
   renderUsers();
+  if (fixed.length) {
+    flashSaveStatus("Cloud accounts ready: " + fixed.join(", ") + (blocked.length ? " — fix needed for: " + blocked.join(", ") : "") + ".", !!blocked.length);
+  } else if (blocked.length) {
+    flashSaveStatus("Can't bind: " + blocked.join(", ") + ". Delete each in Supabase > Authentication > Users, then tap Sync now again.", true);
+  }
 }
 
 // Returns true when this username/password has a working cloud session.
