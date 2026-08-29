@@ -574,6 +574,38 @@ async function cloudProvisionProfile(authUser, username) {
   } catch (e) { /* non-admins cannot create profiles — Row Level Security blocks it by design */ }
 }
 
+// Admin-side self-heal: link every local user that has an existing cloud
+// account but no profile yet (creates the profile and binds it). Also
+// records the local password for future repairs.
+async function repairLocalUsersToCloud() {
+  if (!db || !cloudReady || !isAdmin()) return;
+  const before = (await db.auth.getSession()).data.session;
+  for (const lk of users.slice()) {
+    if (!lk || !lk.username || lk.id) continue;
+    if (!lk.password) continue;
+    try {
+      const email = cloudEmail(lk.username);
+      const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
+      if (prof) { lk.id = prof.id; continue; }
+      const si = await db.auth.signInWithPassword({ email, password: lk.password });
+      if (si.error || !(si.data && si.data.user)) continue;
+      lk.id = si.data.user.id;
+      await db.from("user_profiles").upsert({
+        id: lk.id,
+        username: lk.username,
+        display_name: lk.displayName || lk.username,
+        role: lk.role || "User",
+        department: lk.department || "",
+        status: lk.status || "Active",
+        perms: lk.perms || { view: true, add: false, edit: false }
+      }, { onConflict: "id" });
+    } catch (e2) { /* keep trying the next user */ }
+  }
+  if (before) await db.auth.setSession({ access_token: before.access_token, refresh_token: before.refresh_token }).catch(() => { });
+  saveUsers();
+  renderUsers();
+}
+
 // Returns true when this username/password has a working cloud session.
 // New accounts are only auto-created when the password also matches a
 // known local user (authorizedLocally), so random guesses can't create users.
@@ -2636,6 +2668,7 @@ async function handleUserFormSubmit(e) {
           if (!uid) { alert("Could not link the existing account. Please try again."); return; }
           rec.username = username;
           rec.id = uid;
+          rec.password = pwd;
           users.push(rec);
           await saveUsers();
           renderUsers();
@@ -2649,6 +2682,7 @@ async function handleUserFormSubmit(e) {
       }
       rec.username = username;
       rec.id = (su && su.user && su.user.id) || null;
+      rec.password = pwd;
       if (!rec.id) { alert("Cloud account was created but we could not link it. Please try again."); return; }
       users.push(rec);
       await saveUsers();
@@ -2930,7 +2964,10 @@ async function bootApp() {
   if (cloudConfigured && db) {
     if (await cloudConnect()) await pullCloudUsers();
     await pullCloudProjects();
-    if (cloudReady) syncProjectsToCloud();
+    if (cloudReady) {
+      syncProjectsToCloud();
+      repairLocalUsersToCloud();
+    }
   }
   refreshProfile();
   applyPermissions();
