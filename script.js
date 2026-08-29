@@ -2880,6 +2880,11 @@ async function bootApp() {
     db.auth.signOut().catch(() => {});
     location.reload();
   });
+  const syncBtn = document.getElementById("syncNowBtn");
+  if (syncBtn) syncBtn.addEventListener("click", () => {
+    if (!db || !cloudConfigured) { flashSaveStatus("Cloud is not set up on this device yet.", true); return; }
+    syncProjectsToCloud();
+  });
   if (cloudConfigured && db) {
     if (await cloudConnect()) await pullCloudUsers();
     await pullCloudProjects();
