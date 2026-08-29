@@ -2501,7 +2501,9 @@ async function doSignIn(u, p, err) {
       err.innerHTML = (knownLocally
         ? "Your cloud account is active but has no profile yet. Your account is known on this device, so it will open as soon as an administrator links it. As administrator: Users → Add user → type this username with a password → Save → tap Sync now. Then sign in again."
         : "This browser does not have '" + u + "' in its Users list yet — that is why it cannot open here. Sign in as an administrator, go to Users → Add user → type '" + u + "' with a password → Save. Then '" + u + "' can sign in.") +
-        "<br><br>Optional permanent rule (lets users register themselves) — run in your Supabase SQL editor (<a href=\"https://supabase.com/dashboard/project/fmoxsqgnvfyszxcsypgb/sql/new\" target=\"_blank\" rel=\"noopener\">open SQL editor</a>, paste, Run):<br><textarea id=\"fixSql\" rows=\"4\" readonly style=\"width:100%;font-family:monospace;font-size:12px;margin-top:6px\">' + FIX_SQL + '</textarea><br><button type=\"button\" class=\"btn\" id=\"copyFixSqlBtn\">Copy SQL</button>';
+        "<br><br>Optional permanent rule (lets users register themselves) — run in your Supabase SQL editor (<a href=\"https://supabase.com/dashboard/project/fmoxsqgnvfyszxcsypgb/sql/new\" target=\"_blank\" rel=\"noopener\">open SQL editor</a>, paste, Run):<br><textarea id=\"fixSql\" rows=\"4\" readonly style=\"width:100%;font-family:monospace;font-size:12px;margin-top:6px\">" +
+        FIX_SQL +
+        "</textarea><br><button type=\"button\" class=\"btn\" id=\"copyFixSqlBtn\">Copy SQL</button>";
       const cbtn = document.getElementById("copyFixSqlBtn");
       if (cbtn) cbtn.addEventListener("click", () => {
         const ta = document.getElementById("fixSql");
