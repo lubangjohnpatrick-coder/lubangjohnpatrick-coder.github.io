@@ -610,7 +610,7 @@ async function repairLocalUsersToCloud() {
   if (fixed.length) {
     flashSaveStatus("Cloud accounts ready: " + fixed.join(", ") + (blocked.length ? " — fix needed for: " + blocked.join(", ") : "") + ".", !!blocked.length);
   } else if (blocked.length) {
-    flashSaveStatus("Can't bind: " + blocked.join(", ") + ". Delete each in Supabase > Authentication > Users, then tap Sync now again.", true);
+    flashSaveStatus("Can't bind: " + blocked.join(", ") + ". Option 1: in Users, re-add each with its ORIGINAL password. Option 2: delete it in Supabase > Authentication > Users, then re-add.", true);
   }
 }
 
