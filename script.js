@@ -459,7 +459,7 @@ const PENDING_DEL_KEY = "aace_pending_deletes_v1";
 
 function isCloudConfigured() {
   return typeof window.AACE_CLOUD === "object" && !!window.AACE_CLOUD && !!window.AACE_CLOUD.url && !!window.AACE_CLOUD.anonKey
-    && typeof window.supabase === "function" && !!window.supabase.createClient;
+    && !!window.supabase && typeof window.supabase === "object" && !!window.supabase.createClient;
 }
 
 function loadSupabaseLib() {
