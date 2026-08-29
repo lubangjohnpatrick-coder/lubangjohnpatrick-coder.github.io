@@ -2618,12 +2618,34 @@ async function handleUserFormSubmit(e) {
         await db.auth.setSession({ access_token: beforeSess.access_token, refresh_token: beforeSess.refresh_token }).catch(() => {});
       }
       if (error) {
-        if (/already_?registered|already exists/i.test(error.message)) {
-          alert("A cloud account already exists for '" + username + "'. Choose a different username or reuse the existing account.");
-        } else {
+        const regErr = /already_?registered|already\s+registered|already exists/i.test(error.message);
+        if (!regErr) {
           alert("Could not create the cloud account: " + error.message);
+          return;
         }
-        return;
+        // The auth account already exists (created earlier without a profile). Link it.
+        try {
+          const beforeSess2 = (await db.auth.getSession()).data.session;
+          const si = await db.auth.signInWithPassword({ email, password: pwd });
+          if (beforeSess2) await db.auth.setSession({ access_token: beforeSess2.access_token, refresh_token: beforeSess2.refresh_token }).catch(() => {});
+          if (si.error) {
+            alert("A cloud account for '" + username + "' already exists but its password doesn't match (or it was never verified). In Supabase go to Authentication > Users, delete that user, then add '" + username + "' again.");
+            return;
+          }
+          const uid = si.data && si.data.user && si.data.user.id;
+          if (!uid) { alert("Could not link the existing account. Please try again."); return; }
+          rec.username = username;
+          rec.id = uid;
+          users.push(rec);
+          await saveUsers();
+          renderUsers();
+          closeUserModal();
+          alert("Cloud account for '" + username + "' already existed — it has now been linked to the Users list.");
+          return;
+        } catch (e2) {
+          alert("Could not create the cloud account: " + e2.message);
+          return;
+        }
       }
       rec.username = username;
       rec.id = (su && su.user && su.user.id) || null;
