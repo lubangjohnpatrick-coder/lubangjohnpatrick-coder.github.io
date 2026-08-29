@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AACE Project Dashboard – Capital Expenditure Monitoring System</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
 </head>
 <body>
 
@@ -88,8 +90,11 @@
       <div class="content-main">
 
         <div class="updated-row">
-          <span id="saveStatus">All changes saved offline in this browser</span>
-          &nbsp;·&nbsp; Last updated: <span id="lastUpdated"></span>
+          <span id="saveStatus">All changes saved in this browser</span>
+          <span class="sep">&nbsp;·&nbsp;</span>
+          <span id="cloudStatus" class="cloud-dot off">● local only</span>
+          <span class="sep">&nbsp;·&nbsp;</span>
+          Last updated: <span id="lastUpdated"></span>
         </div>
 
         <!-- SUMMARY CARDS -->
@@ -259,8 +264,9 @@
             </div>
             <div class="form-row">
               <label>Password</label>
-              <input type="text" id="setPassword">
+              <input type="password" id="setPassword" autocomplete="new-password">
             </div>
+            <div class="hint">Leave the password blank to keep your current one.</div>
           </div>
           <button class="btn btn-primary" id="saveCredsBtn">Save Credentials</button>
           <div class="hint-box" id="credsMsg" style="display:none;"></div>

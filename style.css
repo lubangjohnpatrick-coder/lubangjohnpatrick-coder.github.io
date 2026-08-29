@@ -515,6 +515,12 @@ tbody tr.selected { background: var(--blue-50); }
 .perms-cell { white-space: nowrap; }
 .muted { color: var(--gray-400); }
 
+/* ---------- Cloud sync status ---------- */
+.cloud-dot { font-size: 11px; font-weight: 700; }
+.cloud-dot.on { color: var(--green-600); }
+.cloud-dot.off { color: var(--gray-400); }
+.sep { color: var(--gray-300); }
+
 /* ---------- Responsive ---------- */
 .scrim {
   position: fixed; inset: 0; background: rgba(12, 21, 38, 0.55);

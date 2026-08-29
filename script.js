@@ -231,13 +231,82 @@ let projectCounter = 1;
 
 const STORAGE_KEY = "aace_dashboard_projects_v1";
 
+function timeNow() {
+  return new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
+}
+
 function saveProjects() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-    flashSaveStatus("Saved offline · " + new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
     flashSaveStatus("⚠ Could not save to this browser's storage — export a backup to be safe", true);
+    return;
   }
+  syncProjectsToCloud();
+}
+
+function pendingCloudDeletes() {
+  try {
+    const raw = localStorage.getItem(PENDING_DEL_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (e) { return new Set(); }
+}
+function addPendingCloudDelete(ids) {
+  const s = pendingCloudDeletes();
+  (Array.isArray(ids) ? ids : [ids]).forEach(id => s.add(id));
+  try { localStorage.setItem(PENDING_DEL_KEY, JSON.stringify([...s])); } catch (e) { /* ignore */ }
+}
+function clearPendingCloudDeletes() {
+  try { localStorage.removeItem(PENDING_DEL_KEY); } catch (e) { /* ignore */ }
+}
+function computeProjectCounter(list) {
+  const maxNum = (list || []).reduce((m, p) => {
+    const n = parseInt(String(p.id).split("-").pop(), 10);
+    return isNaN(n) ? m : Math.max(m, n);
+  }, 0);
+  return maxNum + 1;
+}
+
+// Push the local project list to the shared database (and pull anything we missed).
+function syncProjectsToCloud() {
+  if (!db || !cloudReady) {
+    flashSaveStatus("Saved " + (cloudConfigured ? "offline — will sync when back online" : "in this browser") + " · " + timeNow(), !!cloudConfigured);
+    return;
+  }
+  (async () => {
+    try {
+      const deleted = pendingCloudDeletes();
+      const { data, error } = await db.from("projects").select("id, data");
+      if (error) throw error;
+      const localMap = new Map(projects.map(p => [p.id, p]));
+      const finalMap = new Map();
+      (data || []).forEach(r => {
+        if (!r || !r.data) return;
+        const pid = r.data.id || r.id;
+        if (deleted.has(pid)) return;
+        finalMap.set(pid, localMap.has(pid) ? localMap.get(pid) : r.data);
+      });
+      projects.forEach(p => { if (p && p.id && !finalMap.has(p.id) && !deleted.has(p.id)) finalMap.set(p.id, p); });
+      projects = [...finalMap.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      projectCounter = computeProjectCounter(projects);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+      const rows = projects.map(p => ({ id: p.id, data: p, updated_at: new Date().toISOString() }));
+      const { error: upErr } = await db.from("projects").upsert(rows, { onConflict: "id" });
+      if (upErr) throw upErr;
+      if (deleted.size) {
+        const { error: delErr } = await db.from("projects").delete().in("id", [...deleted]);
+        if (delErr) throw delErr;
+        clearPendingCloudDeletes();
+      }
+      flashSaveStatus("Saved to shared cloud · " + timeNow());
+      renderFilterOptions();
+      renderCards();
+      renderTable();
+    } catch (e) {
+      flashSaveStatus("Kept locally — will sync when back online", true);
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (x) { /* ignore */ }
+    }
+  })();
 }
 function flashSaveStatus(msg, isWarning) {
   const el = document.getElementById("saveStatus");
@@ -294,7 +363,29 @@ function loadUsers() {
   });
   saveUsers();
 }
-function saveUsers() { localStorage.setItem(USERS_KEY, JSON.stringify(users)); }
+function saveUsers() {
+  try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch (e) { /* ignore */ }
+  if (!db || !cloudReady || !isAdmin()) return;
+  (async () => {
+    try {
+      const rows = users
+        .filter(u => u && u.id)
+        .map(u => ({
+          id: u.id,
+          username: u.username,
+          display_name: u.displayName || u.username,
+          role: u.role || "User",
+          department: u.department || "",
+          status: u.status || "Active",
+          perms: u.perms || { view: true, add: false, edit: false }
+        }));
+      if (rows.length) {
+        const { error } = await db.from("user_profiles").upsert(rows, { onConflict: "id" });
+        if (error) throw error;
+      }
+    } catch (e) { /* cloud down — saved locally, will sync when back online */ }
+  })();
+}
 
 function getSessionUser() {
   const s = sessionStorage.getItem(SESSION_KEY);
@@ -325,7 +416,7 @@ function isAdmin() {
   return !!u && u.role === "Administrator";
 }
 function permsOf(u) {
-  return u && u.perms && typeof u.perms === "object" ? u.perms : { view: true, add: true, edit: true };
+  return u && u.perms && typeof u.perms === "object" ? u.perms : { view: false, add: false, edit: false };
 }
 function canAdd() { return isAdmin() || !!permsOf(currentUser()).add; }
 function canEdit() { return isAdmin() || !!permsOf(currentUser()).edit; }
@@ -335,6 +426,222 @@ function applyPermissions() {
   if (usersLink) usersLink.style.display = isAdmin() ? "" : "none";
   const addBtn = document.getElementById("addProjectBtn");
   if (addBtn) addBtn.style.display = canAdd() ? "" : "none";
+}
+
+// ---------------------------------------------------------------------
+// 2.6 CLOUD LAYER (Supabase) — shared projects & accounts across devices
+// Config lives in supabase-config.js. Security rules live in
+// supabase-schema.sql (Row Level Security). Without the config file the
+// app keeps working 100% offline in this browser.
+// ---------------------------------------------------------------------
+let db = null;
+let cloudConfigured = false;
+let cloudReady = false;
+let cloudSyncTimer = null;
+const PENDING_DEL_KEY = "aace_pending_deletes_v1";
+
+function isCloudConfigured() {
+  return typeof window.AACE_CLOUD === "object" && !!window.AACE_CLOUD && !!window.AACE_CLOUD.url && !!window.AACE_CLOUD.anonKey
+    && typeof window.supabase === "function" && !!window.supabase.createClient;
+}
+
+function initCloud() {
+  cloudConfigured = isCloudConfigured();
+  if (cloudConfigured) {
+    try {
+      db = window.supabase.createClient(window.AACE_CLOUD.url, window.AACE_CLOUD.anonKey, {
+        auth: { persistSession: true, autoRefreshToken: true }
+      });
+    } catch (e) { db = null; cloudConfigured = false; }
+  }
+  setCloudStatus(cloudReady, cloudConfigured ? "offline" : "local only");
+}
+
+function cloudEmail(username) {
+  return (username || "").trim().toLowerCase().replace(/\s+/g, ".") + "@aace.local";
+}
+
+async function hashPassword(pwd) {
+  try {
+    if (window.crypto && crypto.subtle && crypto.subtle.digest) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("aace::" + pwd));
+      return "aace$" + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+  } catch (e) { /* fall back to the simple hash below */ }
+  let h = 5381;
+  const s = String(pwd);
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return "fnv$" + h.toString(16);
+}
+function isHashedPassword(p) {
+  return typeof p === "string" && (p.startsWith("aace$") || p.startsWith("fnv$"));
+}
+async function verifyAndMigrateUserPassword(u, password) {
+  if (!u) return false;
+  const stored = String(u.password || "");
+  if (!isHashedPassword(stored)) {
+    if (stored === password) { u.password = await hashPassword(password); saveUsers(); return true; }
+    return false;
+  }
+  return stored === await hashPassword(password);
+}
+
+async function cloudGetAuthUser() {
+  try {
+    const { data, error } = await db.auth.getSession();
+    if (error || !data.session) return null;
+    return data.session.user;
+  } catch (e) { return null; }
+}
+
+function setCloudStatus(on, label) {
+  const el = document.getElementById("cloudStatus");
+  if (!el) return;
+  el.textContent = "● " + label;
+  el.className = "cloud-dot " + (on ? "on" : "off");
+}
+
+async function cloudConnect() {
+  if (!db) { cloudReady = false; return false; }
+  try {
+    await cloudGetAuthUser();
+    const probe = await db.from("projects").select("id").limit(1);
+    if (probe.error) throw probe.error;
+    cloudReady = true;
+    setCloudStatus(true, "shared cloud");
+    return true;
+  } catch (e) {
+    cloudReady = false;
+    setCloudStatus(false, "offline (retrying)");
+    return false;
+  }
+}
+
+async function cloudHasProfiles() {
+  try {
+    const { data } = await db.from("user_profiles").select("id").limit(1);
+    return !!(data && data.length);
+  } catch (e) { return true; }
+}
+
+async function cloudProvisionProfile(authUser, username) {
+  if (!db || !authUser || !authUser.id) return;
+  try {
+    const { data: existing } = await db.from("user_profiles").select("id").eq("id", authUser.id).maybeSingle();
+    if (existing) return;
+    const localUser = findUserByUsername(username);
+    const first = !(await cloudHasProfiles());
+    const role = (localUser && localUser.role) || (first ? "Administrator" : "User");
+    const { error } = await db.from("user_profiles").insert({
+      id: authUser.id,
+      username: username.trim(),
+      display_name: (localUser && localUser.displayName) || username.trim(),
+      role: role,
+      department: (localUser && localUser.department) || "",
+      status: "Active",
+      perms: (localUser && localUser.perms) || { view: true, add: false, edit: false }
+    });
+    if (error) throw error;
+  } catch (e) { /* non-admins cannot create profiles — Row Level Security blocks it by design */ }
+}
+
+// Returns true when this username/password has a working cloud session.
+// New accounts are only auto-created when the password also matches a
+// known local user (authorizedLocally), so random guesses can't create users.
+async function ensureCloudSession(username, password, authorizedLocally) {
+  if (!db) return false;
+  const email = cloudEmail(username);
+  try {
+    const signIn = await db.auth.signInWithPassword({ email, password });
+    if (!signIn.error) {
+      const u = await cloudGetAuthUser();
+      if (u) await cloudProvisionProfile(u, username);
+      return true;
+    }
+  } catch (e) { /* no session yet */ }
+  if (!authorizedLocally) return false;
+  try {
+    const up = await db.auth.signUp({ email, password });
+    if (up.error && !/already_?registered|already exists/i.test(up.error.message)) return false;
+    const signIn2 = await db.auth.signInWithPassword({ email, password });
+    if (signIn2.error) return false;
+    const u = await cloudGetAuthUser();
+    if (u) await cloudProvisionProfile(u, username);
+    return true;
+  } catch (e) { return false; }
+}
+
+// Pull the shared user list (admins see everyone, others just themselves).
+async function pullCloudUsers() {
+  if (!db || !cloudReady) return false;
+  try {
+    const au = await cloudGetAuthUser();
+    if (!au) return false;
+    const saved = users.slice();
+    const isLocalAdmin = isAdmin();
+    let q = db.from("user_profiles").select("id, username, display_name, role, department, status, perms");
+    if (!isLocalAdmin) q = q.eq("id", au.id);
+    const { data, error } = await q;
+    if (error) throw error;
+    const mapped = (data || []).map(r => {
+      const local = saved.find(x => x.username === r.username) || null;
+      return {
+        id: r.id,
+        username: r.username,
+        displayName: r.display_name || r.username,
+        role: r.role || "User",
+        department: r.department || "",
+        status: r.status || "Active",
+        perms: r.perms && typeof r.perms === "object" ? r.perms : { view: true, add: false, edit: false },
+        password: local ? local.password : ""
+      };
+    });
+    users = mapped;
+    const me = findUserByUsername(getSessionUser());
+    if (me && !users.some(u => u.username === me.username)) users.push(me);
+    saveUsers();
+    return true;
+  } catch (e) { return false; }
+}
+
+// Pull the shared project list into this browser.
+async function pullCloudProjects() {
+  if (!db || !cloudReady) return;
+  try {
+    const deleted = pendingCloudDeletes();
+    const { data, error } = await db.from("projects").select("id, data, updated_at");
+    if (error) throw error;
+    const rows = (data || []).map(r => r.data).filter(r => r && r.id);
+    if (rows.length) {
+      const map = new Map();
+      rows.forEach(p => { if (!deleted.has(p.id)) map.set(p.id, p); });
+      projects.forEach(p => { if (p && p.id && !map.has(p.id) && !deleted.has(p.id)) map.set(p.id, p); });
+      projects = [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      projectCounter = computeProjectCounter(projects);
+    } else if (projects.length) {
+      await cloudUpsertProjects(projects); // first-time migration: push local data up
+    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (x) { /* ignore */ }
+    renderFilterOptions();
+    renderCards();
+    renderTable();
+  } catch (e) { /* stay on the local copy */ }
+}
+
+async function cloudUpsertProjects(list) {
+  if (!db || !list.length) return;
+  const rows = list.map(p => ({ id: p.id, data: p, updated_at: new Date().toISOString() }));
+  const { error } = await db.from("projects").upsert(rows, { onConflict: "id" });
+  if (error) throw error;
+}
+
+function startCloudSyncTimer() {
+  if (!cloudConfigured) return;
+  clearInterval(cloudSyncTimer);
+  cloudSyncTimer = setInterval(() => { if (db && cloudReady) pullCloudProjects(); }, 30000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && db && cloudReady) pullCloudProjects();
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -374,61 +681,136 @@ function makeProject(opts) {
 
 function seedProjects() {
   projects = [
-    makeProject({
-      title: "One (1) unit of Emulsifier for Coldline", department: "Coldline Processing", budget: 15,
-      requestor: "John Patrick Lubang", responsible: "Elizabeth R. Bay", status: "Chief Operating Officer",
-      statusLabel: "Approved", targetCompletion: inDays(60), lastMovementDate: daysAgo(3),
-      lastMovementNote: "Approved by AACE, forwarded for procurement processing", dateSubmitted: daysAgo(40)
-    }),
-    makeProject({
-      title: "Retort Upgrade Project", department: "Retort", budget: 8.5,
-      requestor: "John Lubang", responsible: "Erickson C. Bengat", status: "Financial Planning Manager",
-      statusLabel: "Ongoing Project Review", targetCompletion: inDays(75), lastMovementDate: daysAgo(6),
-      lastMovementNote: "For review by Financial Planning Manager", dateSubmitted: daysAgo(35)
-    }),
-    makeProject({
-      title: "Boiler Replacement", department: "Hotline Kitchen", budget: 12,
-      requestor: "Anna Dela Cruz", responsible: "Sheila R. Rodil", status: "Budget Finance Manager - Financial Planning",
-      statusLabel: "Pending", targetCompletion: inDays(20), lastMovementDate: daysAgo(15),
-      lastMovementNote: "Returned for revision of financial justification", dateSubmitted: daysAgo(70)
-    }),
-    makeProject({
-      title: "Cooling Tower Replacement", department: "Endline", budget: 9.75,
-      requestor: "Robert Garcia", responsible: "Procurement", status: "Released SPQF",
-      statusLabel: "Waiting for SPQF", targetCompletion: inDays(95), lastMovementDate: daysAgo(8),
-      lastMovementNote: "SPQF released, awaiting supplier quotations", dateSubmitted: daysAgo(28)
-    }),
-    makeProject({
-      title: "Warehouse Racking Expansion", department: "Incube", budget: 25,
-      requestor: "Karen Reyes", responsible: "Bernard B. Buenavista", status: "Plant Manager Approval",
-      statusLabel: "Procurement", targetCompletion: inDays(120), lastMovementDate: daysAgo(12),
-      lastMovementNote: "Procurement ongoing, on track", dateSubmitted: daysAgo(90)
-    }),
-    makeProject({
-      title: "Admin Building Elevator Modernization", department: "Admin", budget: 3.2,
-      requestor: "Mark Villanueva", responsible: "Christopher M. Pascual", status: "IETS Manager",
-      statusLabel: "Waiting for Technical Bid", targetCompletion: inDays(50), lastMovementDate: daysAgo(20),
-      lastMovementNote: "Waiting on IETS technical clearance", dateSubmitted: daysAgo(60)
-    }),
-    makeProject({
-      title: "WWTP Improvement and Broth Discharge Management", department: "Marination", budget: 200.7,
-      requestor: "John Patrick Lubang", responsible: "Mauvir C. Buzon", status: "AVP Controllership, Planning and Budget",
-      statusLabel: "Rejected", targetCompletion: inDays(150), lastMovementDate: daysAgo(2),
-      lastMovementNote: "Returned for correction of financial figures", dateSubmitted: daysAgo(110)
-    }),
-    makeProject({
-      title: "Meat Grinder with Attachment", department: "Meat Preparation", budget: 55,
-      requestor: "John Patrick Lubang", responsible: "IETS", status: "Plant AACE Coordinator",
-      statusLabel: "Ongoing Technical Evaluation", targetCompletion: inDays(85), lastMovementDate: daysAgo(9),
-      lastMovementNote: "Waiting for approved financial analysis c/o IETS and BU Finance", dateSubmitted: daysAgo(30)
-    }),
-    makeProject({
-      title: "Rehabilitation of Single Head Hema Filler", department: "Hotline Processing", budget: 5.5,
-      requestor: "Carl Justin Rollon", responsible: "Proponent", status: "AACE Creation",
-      statusLabel: "AACE Creation", targetCompletion: inDays(140), lastMovementDate: daysAgo(1),
-      lastMovementNote: "Engineering contacted supplier for budgetary quotation", dateSubmitted: daysAgo(5)
-    })
+    {
+      id: "AACE-2026-016",
+      title: "Plant 3 Racking System for Meat Preparation Cut Floor",
+      department: "Meat Preparation",
+      budget: 4,
+      requestor: "John Patrick Lubang",
+      personInCharge: "Charissa Mae J. Duncil",
+      currentStatus: "CAPEX Coordinator, Div Level",
+      completion: 54,
+      statusLabel: "Ongoing Project Review",
+      targetCompletion: "2027-01-29",
+      lastMovementDate: "2026-08-29",
+      lastMovementNote: "Ongoing project review of Division Finance",
+      withConstruction: false,
+      dateSubmitted: "2026-08-29"
+    },
+    {
+      id: "AACE-2026-015",
+      title: "Plant 3 Colloid Mill for Spread Line",
+      department: "Hotline Kitchen",
+      budget: 3,
+      requestor: "John Patrick Lubang",
+      personInCharge: "Charissa Mae J. Duncil",
+      currentStatus: "CAPEX Coordinator, Div Level",
+      completion: 54,
+      statusLabel: "Ongoing Project Review",
+      targetCompletion: "2026-12-28",
+      lastMovementDate: "2026-08-29",
+      lastMovementNote: "Ongoing project review of Division Finance",
+      withConstruction: false,
+      dateSubmitted: "2026-08-29"
+    },
+    {
+      id: "AACE-2026-014",
+      title: "Plant 3 WWTP Improvement and Broth Discharge Management System",
+      department: "Admin",
+      budget: 200.7,
+      requestor: "John Patrick Lubang",
+      personInCharge: "CFPAD Analyst",
+      currentStatus: "CFPAD Analyst",
+      completion: 76,
+      statusLabel: "Pending",
+      targetCompletion: "2026-10-28",
+      lastMovementDate: "2026-08-29",
+      lastMovementNote: "For alignment of financials",
+      withConstruction: true,
+      dateSubmitted: "2026-08-29"
+    },
+    {
+      id: "AACE-2026-013",
+      title: "Plant 3 Transfer Pump for Spread and Sauce line with accessories",
+      department: "Hotline Fill Seam",
+      budget: 3.5,
+      requestor: "John Patrick Lubang",
+      personInCharge: "Charissa Mae J. Duncil",
+      currentStatus: "CAPEX Coordinator, Div Level",
+      completion: 54,
+      statusLabel: "Ongoing Project Review",
+      targetCompletion: "2027-01-28",
+      lastMovementDate: "2026-08-30",
+      lastMovementNote: "With Updated SPQF",
+      withConstruction: false,
+      dateSubmitted: "2026-08-30"
+    },
+    {
+      id: "AACE-2026-012",
+      title: "Plant 3 One (1) unit of Sausage Decasing Machine",
+      department: "Meat Preparation",
+      budget: 15,
+      requestor: "John Patrick Lubang",
+      personInCharge: "Mauvir C. Buzon",
+      currentStatus: "AVP Controllership, Planning and Budget",
+      completion: 61,
+      statusLabel: "Pending",
+      targetCompletion: "2027-01-28",
+      lastMovementDate: "2026-07-09",
+      lastMovementNote: "For updating of Financials excluding the PCL",
+      withConstruction: false,
+      dateSubmitted: "2026-07-09"
+    },
+    {
+      id: "AACE-2026-011",
+      title: "Plant 3 Tri Blender for Coldline Processing",
+      department: "Coldline Processing",
+      budget: 3,
+      requestor: "Renel Gallardo",
+      personInCharge: "CFPAD Analyst",
+      currentStatus: "CFPAD Analyst",
+      completion: 79,
+      statusLabel: "Ongoing Project Review",
+      targetCompletion: "2026-12-28",
+      lastMovementDate: "2026-08-20",
+      lastMovementNote: "Ongoing review and approval of corporate finance c/o HB  Coronado;",
+      withConstruction: false,
+      dateSubmitted: "2026-08-20"
+    },
+    {
+      id: "AACE-2026-010",
+      title: "Plant 3 Additional Meat Band Saw for Meat Preparation Area",
+      department: "Meat Preparation",
+      budget: 3,
+      requestor: "Mher Gerald De Soza",
+      personInCharge: "Chesca B. Tenorio",
+      currentStatus: "CFPAD Head",
+      completion: 86,
+      statusLabel: "Ongoing Project Review",
+      targetCompletion: "2026-12-15",
+      lastMovementDate: "2026-08-20",
+      lastMovementNote: "On going review and approval of project c/o Corporate CAPEX Finance",
+      withConstruction: false,
+      dateSubmitted: "2026-08-20"
+    },
+    {
+      id: "AACE-2026-009",
+      title: "Plant 3 One (1) unit of Emulsifier for Coldline",
+      department: "Coldline Processing",
+      budget: 15,
+      requestor: "Charles Lawrence Gozo",
+      personInCharge: "Chesca B. Tenorio",
+      currentStatus: "CFPAD Head",
+      completion: 86,
+      statusLabel: "Ongoing Project Review",
+      targetCompletion: "2026-11-01",
+      lastMovementDate: "2026-08-27",
+      lastMovementNote: "Ongoing Review of Corporate Finance",
+      withConstruction: false,
+      dateSubmitted: "2026-08-27"
+    }
   ];
+  projectCounter = computeProjectCounter(projects);
   saveProjects();
 }
 
@@ -850,17 +1232,16 @@ function importProjects(file) {
         `This file has ${data.length} project(s).\n\nClick OK to REPLACE your current ${projects.length} project(s),\nor Cancel to MERGE them in as additional projects.`
       );
       if (replace) {
+        const oldIds = new Set(projects.map(p => p.id));
+        const newIds = new Set(data.map(p => p.id));
+        addPendingCloudDelete([...oldIds].filter(id => !newIds.has(id)));
         projects = data;
       } else {
         const existingIds = new Set(projects.map(p => p.id));
         data.forEach(p => { if (existingIds.has(p.id)) p.id = p.id + "-imp"; });
         projects = projects.concat(data);
       }
-      const maxNum = projects.reduce((m, p) => {
-        const n = parseInt(String(p.id).split("-").pop(), 10);
-        return isNaN(n) ? m : Math.max(m, n);
-      }, 0);
-      projectCounter = maxNum + 1;
+      projectCounter = computeProjectCounter(projects);
       saveProjects();
       renderFilterOptions();
       renderCards();
@@ -917,23 +1298,35 @@ function setupSidebarNav() {
 
 // ---- Login / logout / profile ----
 function setupLogin() {
-  document.getElementById("loginForm").addEventListener("submit", (e) => {
+  document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const u = document.getElementById("loginUser").value.trim();
     const p = document.getElementById("loginPass").value;
     const err = document.getElementById("loginError");
-    const user = users.length ? findUserByLogin(u, p) : (
-      (u === DEFAULT_ADMIN.username && p === DEFAULT_ADMIN.password) ? { username: u } : null
-    );
-    if (user) {
-      setSessionUser(user.username);
-      location.reload();
-    } else {
-      err.textContent = "Invalid username or password. Please try again.";
+    if (!u || !p) { err.textContent = "Please enter both username and password."; return; }
+    const localUser = findUserByUsername(u);
+    const localOk = await (localUser ? verifyAndMigrateUserPassword(localUser, p) : false);
+    if (cloudConfigured && db) {
+      const cloudOk = await ensureCloudSession(u, p, localOk);
+      if (cloudOk) {
+        await pullCloudUsers();
+        const again = findUserByUsername(u);
+        if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
+        await db.auth.signOut().catch(() => {});
+        err.textContent = "Your account is not active or not set up yet. Ask the administrator for help.";
+        return;
+      }
     }
+    if (localOk && localUser && localUser.status === "Active") {
+      setSessionUser(u);
+      location.reload();
+      return;
+    }
+    err.textContent = "Invalid username or password. Please try again.";
   });
-  document.getElementById("logoutBtn").addEventListener("click", () => {
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
     clearSession();
+    if (db) await db.auth.signOut().catch(() => {});
     location.reload();
   });
 }
@@ -1013,13 +1406,12 @@ function closeUserModal() {
   editingUserId = null;
   document.getElementById("userModal").classList.add("hidden");
 }
-function handleUserFormSubmit(e) {
+async function handleUserFormSubmit(e) {
   e.preventDefault();
   const username = document.getElementById("u_username").value.trim();
   if (!username) { alert("Username is required."); return; }
   const pwd = document.getElementById("u_password").value;
   const rec = {
-    username,
     displayName: document.getElementById("u_displayName").value.trim() || username,
     role: document.getElementById("u_role").value.trim(),
     department: document.getElementById("u_dept").value.trim(),
@@ -1030,19 +1422,66 @@ function handleUserFormSubmit(e) {
       edit: document.getElementById("u_perm_edit").checked
     }
   };
+
   if (editingUserId) {
     const i = users.findIndex(x => x.username.toLowerCase() === editingUserId.toLowerCase());
-    if (i >= 0) {
-      if (pwd) rec.password = pwd; else rec.password = users[i].password || "";
-      Object.assign(users[i], rec);
+    if (i < 0) return;
+    const existing = users[i];
+    const isCloudUser = !!(db && cloudReady && existing.id);
+    if (pwd) {
+      if (isCloudUser) {
+        alert("Cloud accounts change their own password in Settings. Password changes for other cloud users can only be done in the Supabase dashboard. No password change was applied.");
+      } else {
+        rec.password = await hashPassword(pwd);
+      }
+    } else {
+      rec.password = existing.password || "";
     }
-  } else {
-    if (findUserByUsername(username)) { alert("That username already exists."); return; }
-    if (!pwd) { alert("A password is required for new users so they can sign in."); return; }
-    rec.password = pwd;
-    users.push(rec);
+    Object.assign(existing, rec);
+    await saveUsers();
+    renderUsers();
+    closeUserModal();
+    return;
   }
-  saveUsers();
+
+  if (findUserByUsername(username)) { alert("That username already exists."); return; }
+  if (!pwd) { alert("A password is required for new users so they can sign in."); return; }
+
+  if (db && cloudReady && isAdmin()) {
+    try {
+      const email = cloudEmail(username);
+      const beforeSess = (await db.auth.getSession()).data.session;
+      const { data: su, error } = await db.auth.signUp({ email, password: pwd });
+      if (beforeSess) {
+        // signUp switched the browser session to the new account; restore the admin.
+        await db.auth.setSession({ access_token: beforeSess.access_token, refresh_token: beforeSess.refresh_token }).catch(() => {});
+      }
+      if (error) {
+        if (/already_?registered|already exists/i.test(error.message)) {
+          alert("A cloud account already exists for '" + username + "'. Choose a different username or reuse the existing account.");
+        } else {
+          alert("Could not create the cloud account: " + error.message);
+        }
+        return;
+      }
+      rec.username = username;
+      rec.id = (su && su.user && su.user.id) || null;
+      if (!rec.id) { alert("Cloud account was created but we could not link it. Please try again."); return; }
+      users.push(rec);
+      await saveUsers();
+      renderUsers();
+      closeUserModal();
+      return;
+    } catch (e) {
+      alert("Could not set up the cloud account: " + e.message);
+      return;
+    }
+  }
+
+  rec.username = username;
+  rec.password = await hashPassword(pwd);
+  users.push(rec);
+  await saveUsers();
   renderUsers();
   closeUserModal();
 }
@@ -1064,6 +1503,10 @@ function setupUserEvents() {
     if (delUser) {
       if (delUser === getSessionUser()) { alert("You cannot delete your own account while signed in."); return; }
       if (confirm(`Delete user "${delUser}"?`)) {
+        const target = findUserByUsername(delUser);
+        if (target && target.id && db && cloudReady) {
+          db.from("user_profiles").update({ status: "Inactive" }).eq("id", target.id).then(() => {});
+        }
         users = users.filter(x => x.username !== delUser);
         saveUsers();
         renderUsers();
@@ -1079,24 +1522,37 @@ function loadSettings() {
   const u = document.getElementById("setUsername");
   const p = document.getElementById("setPassword");
   if (u) u.value = account.username;
-  if (p) p.value = account.password || "";
+  if (p) { p.value = ""; p.placeholder = "Enter a new password to change it"; }
   const msg = document.getElementById("credsMsg");
   if (msg) msg.style.display = "none";
 }
 function setupSettingsEvents() {
-  document.getElementById("saveCredsBtn").addEventListener("click", () => {
+  document.getElementById("saveCredsBtn").addEventListener("click", async () => {
     const u = document.getElementById("setUsername").value.trim();
     const p = document.getElementById("setPassword").value;
-    if (!u || !p) { alert("Username and password are required."); return; }
+    if (!u) { alert("Username is required."); return; }
     const me = getSessionUser() || DEFAULT_ADMIN.username;
     const target = findUserByUsername(me);
     if (!target) { alert("Your account was not found in the Users list."); return; }
     const clash = users.find(x => x.username.toLowerCase() === u.toLowerCase() && x !== target);
     if (clash) { alert("That username is already taken by another user."); return; }
     const oldName = target.username;
+    const emailChanged = u.toLowerCase() !== oldName.toLowerCase();
+    const isCloudUser = !!(db && cloudReady && target.id);
+    if (isCloudUser) {
+      const updates = {};
+      if (p) updates.password = p;
+      if (emailChanged) updates.email = cloudEmail(u);
+      const { error } = await db.auth.updateUser(updates);
+      if (!error && emailChanged) {
+        alert("Your cloud username was changed. If Supabase asks you to confirm the new email, click the link in that email once.");
+      } else if (error) {
+        alert("Cloud update failed: " + error.message + "\n(Your local login below is still updated.)");
+      }
+    }
     target.username = u;
-    target.password = p;
-    saveUsers();
+    if (p) target.password = await hashPassword(p);
+    await saveUsers();
     renderUsers();
     if (getSessionUser() === oldName) setSessionUser(u);
     refreshProfile();
@@ -1108,7 +1564,8 @@ function setupSettingsEvents() {
   document.getElementById("settingsExportBtn").addEventListener("click", exportProjects);
   document.getElementById("settingsImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
   document.getElementById("clearDataBtn").addEventListener("click", () => {
-    if (confirm("Delete ALL projects from this browser? This cannot be undone.\n\nTip: use Export Backup first to be safe.")) {
+    if (confirm("Delete ALL projects from this browser and the shared cloud? This cannot be undone.\n\nTip: use Export Backup first to be safe.")) {
+      addPendingCloudDelete(projects.map(p => p.id));
       projects = [];
       saveProjects();
       renderFilterOptions();
@@ -1183,6 +1640,7 @@ function setupEvents() {
       if (confirm("Delete this project?")) {
         projects = projects.filter(p => p.id !== delId);
         if (selectedId === delId) closeDetails();
+        addPendingCloudDelete(delId);
         saveProjects();
         renderFilterOptions();
         renderCards();
@@ -1200,29 +1658,31 @@ function setupEvents() {
 // ---------------------------------------------------------------------
 // 13. INIT
 // ---------------------------------------------------------------------
-function bootApp() {
+async function bootApp() {
   if (!loadProjects() || projects.length === 0) {
     seedProjects();
   } else {
     // keep counter ahead of existing IDs
-    const maxNum = projects.reduce((m, p) => {
-      const n = parseInt(p.id.split("-").pop(), 10);
-      return isNaN(n) ? m : Math.max(m, n);
-    }, 0);
-    projectCounter = maxNum + 1;
+    projectCounter = computeProjectCounter(projects);
   }
   setupSidebarNav();
   setupEvents();
   setupUserEvents();
   setupSettingsEvents();
+  if (cloudConfigured && db) {
+    if (await cloudConnect()) await pullCloudUsers();
+    await pullCloudProjects();
+  }
   refreshProfile();
   applyPermissions();
   renderFilterOptions();
   renderCards();
   renderTable();
+  startCloudSyncTimer();
 }
 
-function init() {
+async function init() {
+  initCloud();
   loadUsers();
   setupLogin();
   // Migrate the old "ok"-style session marker to the default admin.
@@ -1231,7 +1691,7 @@ function init() {
     document.getElementById("loginOverlay").classList.remove("hidden");
     return;
   }
-  bootApp();
+  await bootApp();
 }
 
 window.addEventListener("DOMContentLoaded", init);
