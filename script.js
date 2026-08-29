@@ -516,6 +516,7 @@ function setCloudStatus(on, label) {
   if (!el) return;
   el.textContent = "● " + label;
   el.className = "cloud-dot " + (on ? "on" : "off");
+  el.title = "Cloud connection: " + label + ". Click to sign in again / reconnect.";
 }
 
 async function cloudConnect() {
@@ -2845,9 +2846,17 @@ async function bootApp() {
   renderGuideDraft();
   renderTodoList();
   loadAudit();
+  const csDot = document.getElementById("cloudStatus");
+  if (csDot) csDot.addEventListener("click", () => {
+    if (!db) { alert("Cloud is not configured."); return; }
+    clearSession();
+    db.auth.signOut().catch(() => {});
+    location.reload();
+  });
   if (cloudConfigured && db) {
     if (await cloudConnect()) await pullCloudUsers();
     await pullCloudProjects();
+    if (cloudReady) syncProjectsToCloud();
   }
   refreshProfile();
   applyPermissions();
