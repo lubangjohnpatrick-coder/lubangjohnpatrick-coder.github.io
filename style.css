@@ -577,6 +577,7 @@ tbody tr.selected { background: var(--blue-50); box-shadow: inset 3px 0 0 var(--
 .badge-blue { background: var(--blue-100); color: var(--blue-700); }
 .badge-teal { background: var(--teal-100); color: var(--teal-700); }
 .badge-gold { background: var(--gold-100); color: var(--gold-700); }
+.badge-amber { background: rgba(224,164,54,0.16); color: #a16207; }
 .badge-gray { background: var(--gray-100); color: var(--gray-500); }
 
 .progress-wrap { display: flex; align-items: center; gap: 8px; min-width: 108px; }

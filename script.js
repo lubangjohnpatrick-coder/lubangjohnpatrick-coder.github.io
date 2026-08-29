@@ -626,8 +626,13 @@ async function pullCloudUsers() {
       };
     });
     users = mapped;
-    const me = findUserByUsername(getSessionUser());
-    if (me && !users.some(u => u.username === me.username)) users.push(me);
+    const prevUsers = saved.filter(u => !!u && typeof u === "object");
+    const seen = new Set(users.map(u => u.username));
+    prevUsers.filter(u => u && !u.id).forEach(k => {
+      if (k.username && !seen.has(k.username)) { users.push(k); seen.add(k.username); }
+    });
+    const me = prevUsers.find(x => x.username === getSessionUser());
+    if (me && !seen.has(me.username)) { users.push(me); seen.add(me.username); }
     saveUsers();
     return true;
   } catch (e) { return false; }
@@ -2443,10 +2448,16 @@ function setupLogin() {
       const cloudOk = await ensureCloudSession(u, p, localOk);
       if (cloudOk) {
         await pullCloudUsers();
-        const again = findUserByUsername(u);
+        let again = findUserByUsername(u);
+        if (!(again && again.status === "Active")) {
+          const au = await cloudGetAuthUser();
+          if (au) await cloudProvisionProfile(au, u);
+          await pullCloudUsers();
+          again = findUserByUsername(u);
+        }
         if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
         await db.auth.signOut().catch(() => {});
-        err.textContent = "Your account is not active or not set up yet. Ask the administrator for help.";
+        err.textContent = "Your cloud account is active but has no profile yet. Ask the administrator to add you to the Users list, then try again.";
         return;
       }
     }
@@ -2488,7 +2499,7 @@ function renderUsers() {
     const tag = (label, on) => `<span class="perm-tag ${on ? "on" : "off"}">${label}</span>`;
     return `
     <tr>
-      <td><span class="proj-no">${u.username}</span>${isSelf ? ' <span class="badge badge-blue">you</span>' : ''}</td>
+      <td><span class="proj-no">${u.username}</span>${isSelf ? ' <span class="badge badge-blue">you</span>' : ''}${(!u.id && db) ? ' <span class="badge badge-amber">local only</span>' : ''}</td>
       <td class="proj-dept">${u.displayName}</td>
       <td>${u.role || "-"}</td>
       <td class="proj-dept">${u.department || "-"}</td>
@@ -2592,6 +2603,11 @@ async function handleUserFormSubmit(e) {
   if (findUserByUsername(username)) { alert("That username already exists."); return; }
   if (!pwd) { alert("A password is required for new users so they can sign in."); return; }
 
+  if (db && cloudConfigured && !cloudReady) {
+    alert("You are not connected to the shared cloud right now (the badge should be green). Connect first, then add the user — otherwise the account won't sync to other devices and can get lost.");
+    return;
+  }
+
   if (db && cloudReady && isAdmin()) {
     try {
       const email = cloudEmail(username);
@@ -2614,6 +2630,10 @@ async function handleUserFormSubmit(e) {
       if (!rec.id) { alert("Cloud account was created but we could not link it. Please try again."); return; }
       users.push(rec);
       await saveUsers();
+      try {
+        const ver = await db.from("user_profiles").select("id").eq("id", rec.id).maybeSingle();
+        if (ver && ver.error) alert("Account created, but its sync entry hit an error — tap Sync now to retry.");
+      } catch (v) { /* background check only */ }
       renderUsers();
       closeUserModal();
       return;
