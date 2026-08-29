@@ -319,9 +319,17 @@ function syncProjectsToCloud() {
 }
 function flashSaveStatus(msg, isWarning) {
   const el = document.getElementById("saveStatus");
-  if (!el) return;
-  el.textContent = msg;
-  el.style.color = isWarning ? "var(--red-600)" : "var(--green-600)";
+  if (el) { el.textContent = msg; el.style.color = isWarning ? "var(--red-600)" : "var(--green-600)"; }
+  let toast = document.getElementById("saveToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "saveToast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.className = "save-toast show " + (isWarning ? "warn" : "ok");
+  clearTimeout(toast._hide);
+  toast._hide = setTimeout(() => { toast.classList.remove("show"); }, 4200);
 }
 function loadProjects() {
   try {

@@ -279,6 +279,46 @@ body {
 }
 .updated-row .right { display: flex; align-items: center; gap: 8px; }
 
+/* ---------- Cloud status badge + save toast ---------- */
+.updated-row #saveStatus { font-weight: 700; }
+.cloud-dot {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.3px;
+  background: var(--gray-100); color: var(--gray-600);
+  border: 1px solid var(--gray-200);
+}
+.cloud-dot.on {
+  background: rgba(22,163,74,0.12); color: var(--green-600);
+  border-color: rgba(22,163,74,0.35);
+  box-shadow: 0 0 14px rgba(22,163,74,0.25);
+}
+.cloud-dot.off {
+  background: rgba(224,164,54,0.12); color: #a16207;
+  border-color: rgba(224,164,54,0.4);
+  box-shadow: 0 0 14px rgba(224,164,54,0.2);
+}
+.save-toast {
+  position: fixed; right: 18px; bottom: 18px; z-index: 2200;
+  max-width: 360px; padding: 12px 18px;
+  border-radius: 12px; font-size: 13px; font-weight: 600; line-height: 1.45;
+  color: #eaf1fb; background: linear-gradient(135deg, #12233f, #0d1830);
+  border: 1px solid rgba(212,160,60,0.45);
+  box-shadow: 0 12px 34px rgba(4,12,26,0.5);
+  transform: translateX(120%); opacity: 0;
+  transition: transform 0.35s ease, opacity 0.35s ease;
+  pointer-events: none;
+}
+.save-toast.show { transform: none; opacity: 1; }
+.save-toast.ok {
+  border-color: rgba(46,204,113,0.55);
+  background: linear-gradient(135deg, #0f5c3d, #0d1830);
+}
+.save-toast.warn {
+  border-color: rgba(224,164,54,0.65);
+  background: linear-gradient(135deg, #7a4d10, #0d1830);
+}
+
 /* ---------- KPI cards ---------- */
 .cards {
   display: grid;
