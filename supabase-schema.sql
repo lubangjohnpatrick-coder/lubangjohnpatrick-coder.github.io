@@ -52,10 +52,13 @@ drop policy if exists "user_profiles_select" on public.user_profiles;
 create policy "user_profiles_select" on public.user_profiles
   for select to authenticated using (id = auth.uid() or public.is_cloud_admin());
 
--- Only administrators (or the very first account) can create profiles.
+-- Only administrators (or the very first account) can create profiles,
+-- OR a user may create their OWN profile row on first sign-in (id = auth.uid()).
+-- A user can never grant themselves Administrator: role comes from the app,
+-- which only assigns Administrator to the first account or an existing local admin.
 drop policy if exists "user_profiles_insert" on public.user_profiles;
 create policy "user_profiles_insert" on public.user_profiles
-  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user());
+  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user() or id = auth.uid());
 
 -- Only administrators can edit or delete profiles.
 drop policy if exists "user_profiles_update" on public.user_profiles;
