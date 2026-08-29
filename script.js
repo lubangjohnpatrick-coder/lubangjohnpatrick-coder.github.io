@@ -507,10 +507,7 @@ function isHashedPassword(p) {
 async function verifyAndMigrateUserPassword(u, password) {
   if (!u) return false;
   const stored = String(u.password || "");
-  if (!isHashedPassword(stored)) {
-    if (stored === password) { u.password = await hashPassword(password); saveUsers(); return true; }
-    return false;
-  }
+  if (!isHashedPassword(stored)) return stored === password;
   return stored === await hashPassword(password);
 }
 
@@ -2478,47 +2475,74 @@ function setupSidebarNav() {
 }
 
 // ---- Login / logout / profile ----
+async function doSignIn(u, p, err) {
+  if (!u || !p) { if (err) err.textContent = "Please enter both username and password."; return; }
+  const localUser = findUserByUsername(u);
+  const localOk = await (localUser ? verifyAndMigrateUserPassword(localUser, p) : false);
+  if (cloudConfigured && db) {
+    const cloudOk = await ensureCloudSession(u, p, localOk);
+    if (cloudOk) {
+      await pullCloudUsers();
+      let again = findUserByUsername(u);
+      if (!(again && again.status === "Active")) {
+        const au = await cloudGetAuthUser();
+        if (au) await cloudProvisionProfile(au, u);
+        await pullCloudUsers();
+        again = findUserByUsername(u);
+      }
+      if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
+      await db.auth.signOut().catch(() => {});
+      const FIX_SQL = 'drop policy if exists "user_profiles_insert" on public.user_profiles;\ncreate policy "user_profiles_insert" on public.user_profiles\n  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user() or id = auth.uid());';
+      err.innerHTML = 'Your cloud account is active but has no profile yet. Run this one-time rule in your Supabase SQL editor (<a href="https://supabase.com/dashboard/project/fmoxsqgnvfyszxcsypgb/sql/new" target="_blank" rel="noopener">open SQL editor</a>, paste, Run) — then sign in again. It lets each user create their own profile on first sign-in:<br><textarea id="fixSql" rows="4" readonly style="width:100%;font-family:monospace;font-size:12px;margin-top:6px">' + FIX_SQL + '</textarea><br><button type="button" class="btn" id="copyFixSqlBtn">Copy SQL</button>';
+      const cbtn = document.getElementById("copyFixSqlBtn");
+      if (cbtn) cbtn.addEventListener("click", () => {
+        const ta = document.getElementById("fixSql");
+        ta.select(); ta.setSelectionRange(0, 99999);
+        if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(() => flashSaveStatus("SQL copied — paste it in the Supabase SQL editor and Run.")).catch(() => {});
+        else document.execCommand("copy");
+      });
+      return;
+    }
+  }
+  if (localOk && localUser && localUser.status === "Active") {
+    setSessionUser(u);
+    location.reload();
+    return;
+  }
+  if (err) err.textContent = "Invalid username or password. Please try again.";
+}
+function renderQuickSwitch() {
+  const host = document.getElementById("quickSwitch");
+  if (!host) return;
+  const names = Array.from(new Set(users.map(x => x && x.username).filter(Boolean)))
+    .filter(n => {
+      if (n === getSessionUser()) return false;
+      const lu = users.find(x => x && x.username === n);
+      return lu && lu.password && !isHashedPassword(lu.password);
+    }).slice(0, 6);
+  if (!names.length) { host.innerHTML = ""; return; }
+  host.innerHTML = '<div class="login-quick-title">This browser knows these users — tap to open</div>' +
+    names.map(n =>
+      '<button type="button" class="btn login-quick-btn" data-qs="' + n + '">Open ' + n + '</button>'
+    ).join("");
+  host.querySelectorAll("[data-qs]").forEach(b => {
+    b.addEventListener("click", () => {
+      const n = b.dataset.qs;
+      const lu = users.find(x => x && x.username === n);
+      if (!lu || !lu.password) { flashSaveStatus("No saved password for " + n + " — type it in the form instead.", true); return; }
+      doSignIn(n, lu.password, document.getElementById("loginError"));
+    });
+  });
+}
 function setupLogin() {
   document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const u = document.getElementById("loginUser").value.trim();
     const p = document.getElementById("loginPass").value;
     const err = document.getElementById("loginError");
-    if (!u || !p) { err.textContent = "Please enter both username and password."; return; }
-    const localUser = findUserByUsername(u);
-    const localOk = await (localUser ? verifyAndMigrateUserPassword(localUser, p) : false);
-    if (cloudConfigured && db) {
-      const cloudOk = await ensureCloudSession(u, p, localOk);
-      if (cloudOk) {
-        await pullCloudUsers();
-        let again = findUserByUsername(u);
-        if (!(again && again.status === "Active")) {
-          const au = await cloudGetAuthUser();
-          if (au) await cloudProvisionProfile(au, u);
-          await pullCloudUsers();
-          again = findUserByUsername(u);
-        }
-        if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
-        await db.auth.signOut().catch(() => {});
-        const FIX_SQL = 'drop policy if exists "user_profiles_insert" on public.user_profiles;\ncreate policy "user_profiles_insert" on public.user_profiles\n  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user() or id = auth.uid());';
-        err.innerHTML = 'Your cloud account is active but has no profile yet. Run this one-time rule in your Supabase SQL editor (<a href="https://supabase.com/dashboard/project/fmoxsqgnvfyszxcsypgb/sql/new" target="_blank" rel="noopener">open SQL editor</a>, paste, Run) — then sign in again. It lets each user create their own profile on first sign-in:<br><textarea id="fixSql" rows="4" readonly style="width:100%;font-family:monospace;font-size:12px;margin-top:6px">' + FIX_SQL + '</textarea><br><button type="button" class="btn" id="copyFixSqlBtn">Copy SQL</button>';
-        const cbtn = document.getElementById("copyFixSqlBtn");
-        if (cbtn) cbtn.addEventListener("click", () => {
-          const ta = document.getElementById("fixSql");
-          ta.select(); ta.setSelectionRange(0, 99999);
-          if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(() => flashSaveStatus("SQL copied — paste it in the Supabase SQL editor and Run.")).catch(() => {});
-          else document.execCommand("copy");
-        });
-        return;
-      }
-    }
-    if (localOk && localUser && localUser.status === "Active") {
-      setSessionUser(u);
-      location.reload();
-      return;
-    }
-    err.textContent = "Invalid username or password. Please try again.";
+    doSignIn(u, p, err);
   });
+  renderQuickSwitch();
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     clearSession();
     if (db) await db.auth.signOut().catch(() => {});

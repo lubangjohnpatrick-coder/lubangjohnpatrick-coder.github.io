@@ -759,6 +759,9 @@ tbody tr.selected { background: var(--blue-50); box-shadow: inset 3px 0 0 var(--
 .login-error { color: var(--red-600); font-size: 12.5px; margin-top: 8px; min-height: 16px; }
 .login-btn { width: 100%; margin-top: 14px; padding: 11px; font-size: 14px; }
 .login-hint { margin-top: 14px; font-size: 11px; color: var(--gray-400); text-align: center; }
+.login-quick { margin-top: 18px; text-align: center; }
+.login-quick-title { font-size: 11px; color: var(--gray-400); margin-bottom: 8px; }
+.login-quick-btn { margin: 3px; }
 
 /* ---------- Pages (Users / Settings) ---------- */
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
