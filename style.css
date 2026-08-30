@@ -232,7 +232,7 @@ body {
   border: 2px solid #fff;
 }
 
-.profile { display: flex; align-items: center; gap: 10px; }
+.profile { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .avatar {
   width: 34px; height: 34px; border-radius: 50%;
   background: linear-gradient(135deg, var(--blue-500), var(--blue-700));

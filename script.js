@@ -1,9 +1,9 @@
 /* =========================================================================
    AACE PROJECT DASHBOARD — Capital Expenditure Monitoring System
    Approval-flow data below is transcribed from the official AACE approval
-   matrix (AACE_Project_Status workbook, "Approval" tab). Project rows are
-   placeholder/dummy data — replace them with real projects via
-   "Add New Project" or by editing seedProjects() below.
+   matrix (AACE_Project_Status workbook, "Approval" tab). Real project rows
+   are entered and shared by the team through the app (Projects / Users);
+   no placeholder seed data is loaded on start.
    ========================================================================= */
 
 // ---------------------------------------------------------------------
@@ -592,7 +592,7 @@ async function repairLocalUsersToCloud() {
   const fixed = [], blocked = [];
   for (const lk of users.slice()) {
     if (!lk || !lk.username || lk.id) continue;
-    if (!lk.password) continue;
+    if (!lk.password || isHashedPassword(lk.password)) continue;
     try {
       const email = cloudEmail(lk.username);
       const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
@@ -947,7 +947,7 @@ function renderTodoList() {
   el.innerHTML = list.map(p => `
     <div class="todo-item">
       <div class="todo-head">
-        <span class="proj-no">${p.id}</span>
+        <span class="proj-no">${esc(p.id)}</span>
         <span class="todo-title">${esc(p.title)}</span>
         <span class="badge ${badgeClass(p.statusLabel)}">${esc(p.statusLabel)}</span>
       </div>
@@ -958,13 +958,13 @@ function renderTodoList() {
         <span>Next: ${esc(nextStageOf(p) ? nextStageOf(p).responsible + " — " + nextStageOf(p).status : "Fully Approved")}</span>
       </div>
       <div class="todo-body">
-        <div class="todo-action ${todoCache[p.id] ? "" : "empty"}" id="todoOut_${p.id}">
+        <div class="todo-action ${todoCache[p.id] ? "" : "empty"}" id="todoOut_${domId(p.id)}">
           ${todoCache[p.id] ? (todoCache[p.id].offline ? "(offline suggestion) " : "") + esc(todoCache[p.id].action) : "Click Generate for a suggested next action and follow-up email."}
           ${todoCache[p.id] && todoCache[p.id].email ? `<div class="todo-mail">${esc(todoCache[p.id].email)}</div>` : ""}
         </div>
         <div class="todo-btns">
-          <button class="btn btn-sm btn-gold btn-gen-one" data-id="${p.id}">&#128161; Generate</button>
-          <button class="btn btn-sm btn-ghost btn-copy-mail" data-id="${p.id}" style="${todoCache[p.id] && todoCache[p.id].email ? "" : "display:none"}">&#128203; Copy email</button>
+          <button class="btn btn-sm btn-gold btn-gen-one" data-id="${esc(p.id)}">&#128161; Generate</button>
+          <button class="btn btn-sm btn-ghost btn-copy-mail" data-id="${esc(p.id)}" style="${todoCache[p.id] && todoCache[p.id].email ? "" : "display:none"}">&#128203; Copy email</button>
         </div>
       </div>
     </div>`).join("");
@@ -973,7 +973,7 @@ function renderTodoList() {
 async function generateTodoFor(id, btn) {
   const p = projects.find(x => x.id === id);
   if (!p) return;
-  const out = document.getElementById("todoOut_" + id);
+  const out = document.getElementById("todoOut_" + domId(id));
   if (!out) return;
   if (btn) { btn.disabled = true; btn.innerHTML = "&#8987; Writing..."; }
   out.className = "todo-action empty";
@@ -982,8 +982,9 @@ async function generateTodoFor(id, btn) {
   if (btn) { btn.disabled = false; btn.innerHTML = "&#128161; Generate"; }
   out.className = "todo-action";
   out.innerHTML = (res.offline ? '<span class="offline-tag">OFFLINE SUGGESTION</span> ' : "") + esc(res.action) + (res.email ? `<div class="todo-mail">${esc(res.email)}</div>` : "");
-  const cb = document.querySelector(`.btn-copy-mail[data-id="${id}"]`);
-  if (cb) cb.style.display = res.email ? "" : "none";
+  document.querySelectorAll(".btn-copy-mail").forEach(b => {
+    if (b.dataset.id === id) b.style.display = res.email ? "" : "none";
+  });
   renderTodoList(); // persist cached state into other rendered buttons safely
 }
 
@@ -1667,173 +1668,19 @@ function exportSummaryPDF() {
 }
 
 // ---------------------------------------------------------------------
-// 3. SEED / PLACEHOLDER DATA
+// 3. DATES
 // ---------------------------------------------------------------------
-function daysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
-}
 function inDays(n) {
   const d = new Date();
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
-function makeProject(opts) {
-  const workflow = getWorkflow(opts.budget, opts.withConstruction);
-  const idx = findStageIndex(workflow, opts.responsible, opts.status);
-  const stage = idx >= 0 ? workflow.stages[idx] : workflow.stages[0];
-  return {
-    id: "AACE-2026-" + String(projectCounter++).padStart(3, "0"),
-    title: opts.title,
-    department: opts.department,
-    budget: opts.budget,
-    requestor: opts.requestor,
-    personInCharge: stage.responsible,
-    currentStatus: stage.status,
-    completion: stage.percent,
-    statusLabel: opts.statusLabel,
-    targetCompletion: opts.targetCompletion,
-    lastMovementDate: opts.lastMovementDate,
-    lastMovementNote: opts.lastMovementNote,
-    dateSubmitted: opts.dateSubmitted || opts.lastMovementDate
-  };
-}
-
 function seedProjects() {
-  projects = [
-    {
-      id: "AACE-2026-016",
-      title: "Plant 3 Racking System for Meat Preparation Cut Floor",
-      department: "Meat Preparation",
-      budget: 4,
-      requestor: "John Patrick Lubang",
-      personInCharge: "Charissa Mae J. Duncil",
-      currentStatus: "CAPEX Coordinator, Div Level",
-      completion: 54,
-      statusLabel: "Ongoing Project Review",
-      targetCompletion: "2027-01-29",
-      lastMovementDate: "2026-08-29",
-      lastMovementNote: "Ongoing project review of Division Finance",
-      withConstruction: false,
-      dateSubmitted: "2026-08-29"
-    },
-    {
-      id: "AACE-2026-015",
-      title: "Plant 3 Colloid Mill for Spread Line",
-      department: "Hotline Kitchen",
-      budget: 3,
-      requestor: "John Patrick Lubang",
-      personInCharge: "Charissa Mae J. Duncil",
-      currentStatus: "CAPEX Coordinator, Div Level",
-      completion: 54,
-      statusLabel: "Ongoing Project Review",
-      targetCompletion: "2026-12-28",
-      lastMovementDate: "2026-08-29",
-      lastMovementNote: "Ongoing project review of Division Finance",
-      withConstruction: false,
-      dateSubmitted: "2026-08-29"
-    },
-    {
-      id: "AACE-2026-014",
-      title: "Plant 3 WWTP Improvement and Broth Discharge Management System",
-      department: "Admin",
-      budget: 200.7,
-      requestor: "John Patrick Lubang",
-      personInCharge: "CFPAD Analyst",
-      currentStatus: "CFPAD Analyst",
-      completion: 76,
-      statusLabel: "Pending",
-      targetCompletion: "2026-10-28",
-      lastMovementDate: "2026-08-29",
-      lastMovementNote: "For alignment of financials",
-      withConstruction: true,
-      dateSubmitted: "2026-08-29"
-    },
-    {
-      id: "AACE-2026-013",
-      title: "Plant 3 Transfer Pump for Spread and Sauce line with accessories",
-      department: "Hotline Fill Seam",
-      budget: 3.5,
-      requestor: "John Patrick Lubang",
-      personInCharge: "Charissa Mae J. Duncil",
-      currentStatus: "CAPEX Coordinator, Div Level",
-      completion: 54,
-      statusLabel: "Ongoing Project Review",
-      targetCompletion: "2027-01-28",
-      lastMovementDate: "2026-08-30",
-      lastMovementNote: "With Updated SPQF",
-      withConstruction: false,
-      dateSubmitted: "2026-08-30"
-    },
-    {
-      id: "AACE-2026-012",
-      title: "Plant 3 One (1) unit of Sausage Decasing Machine",
-      department: "Meat Preparation",
-      budget: 15,
-      requestor: "John Patrick Lubang",
-      personInCharge: "Mauvir C. Buzon",
-      currentStatus: "AVP Controllership, Planning and Budget",
-      completion: 61,
-      statusLabel: "Pending",
-      targetCompletion: "2027-01-28",
-      lastMovementDate: "2026-07-09",
-      lastMovementNote: "For updating of Financials excluding the PCL",
-      withConstruction: false,
-      dateSubmitted: "2026-07-09"
-    },
-    {
-      id: "AACE-2026-011",
-      title: "Plant 3 Tri Blender for Coldline Processing",
-      department: "Coldline Processing",
-      budget: 3,
-      requestor: "Renel Gallardo",
-      personInCharge: "CFPAD Analyst",
-      currentStatus: "CFPAD Analyst",
-      completion: 79,
-      statusLabel: "Ongoing Project Review",
-      targetCompletion: "2026-12-28",
-      lastMovementDate: "2026-08-20",
-      lastMovementNote: "Ongoing review and approval of corporate finance c/o HB  Coronado;",
-      withConstruction: false,
-      dateSubmitted: "2026-08-20"
-    },
-    {
-      id: "AACE-2026-010",
-      title: "Plant 3 Additional Meat Band Saw for Meat Preparation Area",
-      department: "Meat Preparation",
-      budget: 3,
-      requestor: "Mher Gerald De Soza",
-      personInCharge: "Chesca B. Tenorio",
-      currentStatus: "CFPAD Head",
-      completion: 86,
-      statusLabel: "Ongoing Project Review",
-      targetCompletion: "2026-12-15",
-      lastMovementDate: "2026-08-20",
-      lastMovementNote: "On going review and approval of project c/o Corporate CAPEX Finance",
-      withConstruction: false,
-      dateSubmitted: "2026-08-20"
-    },
-    {
-      id: "AACE-2026-009",
-      title: "Plant 3 One (1) unit of Emulsifier for Coldline",
-      department: "Coldline Processing",
-      budget: 15,
-      requestor: "Charles Lawrence Gozo",
-      personInCharge: "Chesca B. Tenorio",
-      currentStatus: "CFPAD Head",
-      completion: 86,
-      statusLabel: "Ongoing Project Review",
-      targetCompletion: "2026-11-01",
-      lastMovementDate: "2026-08-27",
-      lastMovementNote: "Ongoing Review of Corporate Finance",
-      withConstruction: false,
-      dateSubmitted: "2026-08-27"
-    }
-  ];
-  projectCounter = computeProjectCounter(projects);
-  saveProjects();
+  // A brand-new device starts empty; it fills from the shared cloud or from
+  // the first project added / imported. No example/placeholder data is loaded.
+  projects = [];
+  projectCounter = 1;
 }
 
 // ---------------------------------------------------------------------
@@ -1940,7 +1787,12 @@ function renderCards() {
 // ---------------------------------------------------------------------
 // 5.5 RENDER: EXECUTIVE CHARTS & MANAGEMENT INSIGHTS (offline, no libraries)
 // ---------------------------------------------------------------------
-function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function domId(s) { return String(s == null ? "" : s).replace(/\W/g, "_"); }
 
 function renderExecutive() {
   const td = document.getElementById("topbarDate");
@@ -2029,7 +1881,7 @@ function renderExecutive() {
       attn.innerHTML = `<div class="insight-empty">&#9989; All clear — no projects currently require management action.</div>`;
     } else {
       attn.innerHTML = list.map(p => `
-        <div class="insight-item" data-view="${p.id}" style="cursor:pointer">
+        <div class="insight-item" data-view="${esc(p.id)}" style="cursor:pointer">
           <div class="ih">
             <div class="t">${esc(p.title)}</div>
             <div class="d">${esc(p.department)} &middot; ${fmtDate(p.lastMovementDate)} &middot; ${esc(p.personInCharge)}</div>
@@ -2055,7 +1907,7 @@ function renderExecutive() {
     } else {
       const maxB = Math.max(...list.map(p => Number(p.budget) || 0), 1);
       top.innerHTML = list.map(p => `
-        <div class="insight-item" data-view="${p.id}" style="cursor:pointer">
+        <div class="insight-item" data-view="${esc(p.id)}" style="cursor:pointer">
           <div class="ih">
             <div class="t">${esc(p.title)}</div>
             <div class="d">${esc(p.department)} &middot; <span class="badge ${badgeClass(p.statusLabel)}">${esc(p.statusLabel)}</span></div>
@@ -2142,19 +1994,19 @@ function renderTable() {
       const pcolor = progressColor(p.completion);
       const acolor = actionColor(p.statusLabel);
       let actions = "";
-      if (canView()) actions += `<button class="action-dot ${acolor}" data-view="${p.id}" title="View details">&#128065;</button>`;
-      if (canEdit()) actions += `<button class="action-dot blue" data-edit="${p.id}" title="Edit project">&#9998;</button><button class="action-dot gray" data-del="${p.id}" title="Delete">&#128465;</button>`;
+      if (canView()) actions += `<button class="action-dot ${acolor}" data-view="${esc(p.id)}" title="View details">&#128065;</button>`;
+      if (canEdit()) actions += `<button class="action-dot blue" data-edit="${esc(p.id)}" title="Edit project">&#9998;</button><button class="action-dot gray" data-del="${esc(p.id)}" title="Delete">&#128465;</button>`;
       if (!actions) actions = '<span class="muted">-</span>';
       return `
-      <tr data-id="${p.id}" class="${p.id === selectedId ? 'selected' : ''}">
-        <td><span class="proj-no" data-view="${p.id}">${p.id}</span></td>
+      <tr data-id="${esc(p.id)}" class="${p.id === selectedId ? 'selected' : ''}">
+        <td><span class="proj-no" data-view="${esc(p.id)}">${esc(p.id)}</span></td>
         <td>
-          <div class="proj-title">${p.title}</div>
+          <div class="proj-title">${esc(p.title)}</div>
         </td>
-        <td class="proj-dept">${p.department}</td>
+        <td class="proj-dept">${esc(p.department)}</td>
         <td>${fmtBudgetM(p.budget)}</td>
-        <td><span class="badge ${badgeClass(p.statusLabel)}">${p.statusLabel}</span></td>
-        <td>${p.personInCharge}</td>
+        <td><span class="badge ${badgeClass(p.statusLabel)}">${esc(p.statusLabel)}</span></td>
+        <td>${esc(p.personInCharge)}</td>
         <td>
           <div class="progress-wrap">
             <div class="progress-track"><div class="progress-fill ${pcolor}" style="width:${p.completion}%"></div></div>
@@ -2165,7 +2017,7 @@ function renderTable() {
         <td>${dp}</td>
         <td class="last-move">
           <div class="date">${fmtDate(p.lastMovementDate)}</div>
-          <span class="note" title="${p.lastMovementNote || ''}">${p.lastMovementNote || ''}</span>
+          <span class="note" title="${esc(p.lastMovementNote || '')}">${esc(p.lastMovementNote || '')}</span>
         </td>
         <td>
           <div class="actions-cell">${actions}</div>
@@ -2552,7 +2404,7 @@ function renderQuickSwitch() {
   if (!names.length) { host.innerHTML = ""; return; }
   host.innerHTML = '<div class="login-quick-title">This browser knows these users — tap to open</div>' +
     names.map(n =>
-      '<button type="button" class="btn login-quick-btn" data-qs="' + n + '">Open ' + n + '</button>'
+      '<button type="button" class="btn login-quick-btn" data-qs="' + esc(n) + '">Open ' + esc(n) + '</button>'
     ).join("");
   host.querySelectorAll("[data-qs]").forEach(b => {
     b.addEventListener("click", () => {
@@ -2603,16 +2455,16 @@ function renderUsers() {
     const tag = (label, on) => `<span class="perm-tag ${on ? "on" : "off"}">${label}</span>`;
     return `
     <tr>
-      <td><span class="proj-no">${u.username}</span>${isSelf ? ' <span class="badge badge-blue">you</span>' : ''}${(!u.id && db) ? ' <span class="badge badge-amber">local only</span>' : ''}</td>
-      <td class="proj-dept">${u.displayName}</td>
-      <td>${u.role || "-"}</td>
-      <td class="proj-dept">${u.department || "-"}</td>
-      <td><span class="badge ${u.status === "Active" ? "badge-green" : "badge-gray"}">${u.status}</span></td>
+      <td><span class="proj-no">${esc(u.username)}</span>${isSelf ? ' <span class="badge badge-blue">you</span>' : ''}${(!u.id && db) ? ' <span class="badge badge-amber">local only</span>' : ''}</td>
+      <td class="proj-dept">${esc(u.displayName)}</td>
+      <td>${esc(u.role || "-")}</td>
+      <td class="proj-dept">${esc(u.department || "-")}</td>
+      <td><span class="badge ${u.status === "Active" ? "badge-green" : "badge-gray"}">${esc(u.status)}</span></td>
       <td class="perms-cell">${tag("View", perms.view)}${tag("Add", perms.add)}${tag("Edit", perms.edit)}</td>
       <td>
         <div class="actions-cell">
-          <button class="action-dot blue" data-uedit="${u.username}" title="Edit user">&#9998;</button>
-          ${isSelf ? "" : `<button class="action-dot gray" data-udel="${u.username}" title="Delete user">&#128465;</button>`}
+          <button class="action-dot blue" data-uedit="${esc(u.username)}" title="Edit user">&#9998;</button>
+          ${isSelf ? "" : `<button class="action-dot gray" data-udel="${esc(u.username)}" title="Delete user">&#128465;</button>`}
         </div>
       </td>
     </tr>`;
@@ -2886,17 +2738,17 @@ function setupSettingsEvents() {
   document.getElementById("settingsExportBtn").addEventListener("click", exportProjects);
   document.getElementById("settingsImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
   document.getElementById("removeSamplesBtn").addEventListener("click", () => {
-    const SAMPLE_IDS = Array.from({ length: 8 }, (_, i) => "AACE-2026-" + String(i + 1).padStart(3, "0"));
-    const targets = projects.filter(p => SAMPLE_IDS.includes(p.id));
-    if (!targets.length) { alert("No example projects (AACE-2026-001-008) to remove."); return; }
-    if (!confirm("Remove " + targets.length + " example projects (AACE-2026-001…008) from this browser and the shared cloud?\n\nYour other projects (including the Plant 3 AACE-2026-009-016) are not touched.")) return;
+    const SAMPLE_IDS = new Set(Array.from({ length: 16 }, (_, i) => "AACE-2026-" + String(i + 1).padStart(3, "0")));
+    const targets = projects.filter(p => SAMPLE_IDS.has(p.id));
+    if (!targets.length) { alert("No example projects (AACE-2026-001-016) to remove."); return; }
+    if (!confirm("Remove " + targets.length + " example project(s) (AACE-2026-001…016) from this browser and the shared cloud?\n\nYour real projects (TPHC / PH26P / Creation numbers) are not touched.")) return;
     targets.forEach(p => addPendingCloudDelete(p.id));
-    projects = projects.filter(p => !SAMPLE_IDS.includes(p.id));
+    projects = dedupeProjectsById(projects.filter(p => !SAMPLE_IDS.has(p.id)));
     saveProjects();
     renderFilterOptions();
     renderCards();
     renderTable();
-    alert("Removed " + targets.length + " example projects.");
+    alert("Removed " + targets.length + " example project(s). Deleted ones are now permanent across all devices — they cannot come back.");
   });
   document.getElementById("clearDataBtn").addEventListener("click", () => {
     if (confirm("Delete ALL projects from this browser and the shared cloud? This cannot be undone.\n\nTip: use Export Backup first to be safe.")) {
@@ -2992,6 +2844,10 @@ function setupEvents() {
     if (selectedId) aiSummarizeProject(selectedId);
   });
   document.getElementById("aiGenNoteBtn").addEventListener("click", aiGenerateNote);
+
+  const bell = document.querySelector(".bell-wrap");
+  if (bell) bell.addEventListener("click", () => showView("todo"));
+  document.querySelector(".profile").addEventListener("click", () => showView("settings"));
 }
 
 // ---------------------------------------------------------------------
