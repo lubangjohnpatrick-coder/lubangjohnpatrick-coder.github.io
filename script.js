@@ -2352,6 +2352,7 @@ function handleFormSubmit(e) {
       const clash = projects.find(x => x.id !== oldId && x.id.toLowerCase() === newNo.toLowerCase());
       if (clash) { alert("That project number is already used by another project."); return; }
       existing.id = newNo;
+      addPendingCloudDelete([oldId]);
     }
     if (!stage) {
       shared.personInCharge = existing.personInCharge;
