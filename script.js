@@ -2428,7 +2428,15 @@ async function doSignIn(u, p, err) {
     location.reload();
     return;
   }
-  if (err) err.textContent = "Invalid username or password. Please try again.";
+  if (err) {
+    if (localUser && !localOk) {
+      err.innerHTML = "That password doesn't match the account <b>" + esc(u) + "</b> on this device — and the shared cloud rejected it too (its cloud account usually holds an older password from an earlier setup).<br><br>Fix it in one minute: click <b>Users</b>, select <b>" + esc(u) + "</b>, and re-add it; or delete the stale cloud account in <b>Supabase &gt; Authentication &gt; Users</b> (delete the row for <i>" + esc(cloudEmail(u)) + "</i>), then <b>Users &gt; Add user</b> re-creates it with the password you choose. Tap <b>Sync now</b> afterwards.";
+    } else if (!localUser) {
+      err.innerHTML = "No account called <b>" + esc(u) + "</b> on this device, and the shared cloud rejected that password.<br><br>Sign in as an administrator, then <b>Users &gt; Add user</b> and create <b>" + esc(u) + "</b> with a password. After that it can sign in here.";
+    } else {
+      err.textContent = "Could not verify these credentials. Is this device online and is the shared cloud reachable? Please try again.";
+    }
+  }
 }
 function renderQuickSwitch() {
   const host = document.getElementById("quickSwitch");
