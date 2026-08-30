@@ -580,49 +580,79 @@ async function cloudProvisionProfile(authUser, username) {
       perms: (localUser && localUser.perms) || { view: true, add: false, edit: false }
     });
     if (error) throw error;
-  } catch (e) { /* non-admins cannot create profiles — Row Level Security blocks it by design */ }
+
+    // Re-pull the user list so this account shows up immediately (backend
+    // inserted the row; the app needs it under RLS to see it).
+    pullCloudUsers();
+  } catch (e) {
+    throw (e && e.message) ? e : new Error("Could not provision cloud profile");
+  }
+}
+
+async function ensureCloudProfileRecord(u) {
+  if (!db || !u || !u.username) return;
+  try {
+    const upd = {
+      username: u.username,
+      display_name: u.displayName || u.username,
+      role: u.role || "User",
+      department: u.department || "",
+      status: u.status || "Active",
+      perms: u.perms || { view: true, add: false, edit: false }
+    };
+    if (u.id) {
+      await db.from("user_profiles").upsert({ id: u.id, ...upd }, { onConflict: "id" });
+    } else {
+      const { data: existing } = await db.from("user_profiles").select("id").eq("username", u.username).maybeSingle();
+      if (existing) u.id = existing.id;
+      // Without an auth id we cannot create a valid profile row yet —
+      // the admin linking via Users / Sync will bind the id.
+    }
+  } catch (e) { /* the admin can always repair via Sync now; never block adding */ }
 }
 
 // Admin-side self-heal: promote every local user without a cloud account
 // yet — link existing auth accounts and CREATE a cloud account for local-
 // only users (sign-up + profile). Runs on reconnect / Sync now.
-async function repairLocalUsersToCloud() {
+function repairLocalUsersToCloud() {
   if (!db || !cloudReady || !isAdmin()) return;
-  const before = (await db.auth.getSession()).data.session;
-  const fixed = [], blocked = [];
-  for (const lk of users.slice()) {
-    if (!lk || !lk.username || lk.id) continue;
-    if (!lk.password || isHashedPassword(lk.password)) continue;
-    try {
-      const email = cloudEmail(lk.username);
-      const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
-      if (prof) { lk.id = prof.id; fixed.push(lk.username); continue; }
-      let su = await db.auth.signInWithPassword({ email, password: lk.password });
-      if (su.error || !(su.data && su.data.user)) {
-        su = await db.auth.signUp({ email, password: lk.password });
-      }
-      if (before) await db.auth.setSession({ access_token: before.access_token, refresh_token: before.refresh_token }).catch(() => { });
-      if (su.error || !(su.data && su.data.user)) { blocked.push(lk.username); continue; }
-      lk.id = su.data.user.id;
-      await db.from("user_profiles").upsert({
-        id: lk.id,
-        username: lk.username,
-        display_name: lk.displayName || lk.username,
-        role: lk.role || "User",
-        department: lk.department || "",
-        status: lk.status || "Active",
-        perms: lk.perms || { view: true, add: false, edit: false }
-      }, { onConflict: "id" });
-      fixed.push(lk.username);
-    } catch (e2) { blocked.push(lk.username); }
-  }
-  if (before) await db.auth.setSession({ access_token: before.access_token, refresh_token: before.refresh_token }).catch(() => { });
-  saveUsers();
-  renderUsers();
-  if (fixed.length) {
-    flashSaveStatus("Cloud accounts ready: " + fixed.join(", ") + (blocked.length ? " — fix needed for: " + blocked.join(", ") : "") + ".", !!blocked.length);
-  } else if (blocked.length) {
-    flashSaveStatus("Can't bind: " + blocked.join(", ") + ". Option 1: in Users, re-add each with its ORIGINAL password. Option 2: delete it in Supabase > Authentication > Users, then re-add.", true);
+  const before = (db.auth.getSession && (async () => (await db.auth.getSession()).data.session)()) || Promise.resolve(null);
+  repairLoop();
+  async function repairLoop() {
+    const sess = await before;
+    const fixed = [], blocked = [];
+    for (const lk of users.slice()) {
+      if (!lk || !lk.username) continue;
+      if (!lk.password || isHashedPassword(lk.password)) continue;
+      try {
+        if (!lk.id) {
+          const email = cloudEmail(lk.username);
+          const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
+          if (prof) { lk.id = prof.id; }
+          else {
+            let su = await db.auth.signInWithPassword({ email, password: lk.password });
+            if (su.error || !(su.data && su.data.user)) {
+              su = await db.auth.signUp({ email, password: lk.password });
+            }
+            if (sess) await db.auth.setSession({ access_token: sess.access_token, refresh_token: sess.refresh_token }).catch(() => { });
+            if (su.error || !(su.data && su.data.user)) { blocked.push(lk.username); continue; }
+            lk.id = su.data.user.id;
+          }
+        }
+        lk.role = lk.role || "User";
+        lk.status = lk.status || "Active";
+        await ensureCloudProfileRecord(lk);
+        fixed.push(lk.username);
+      } catch (e2) { blocked.push(lk.username); }
+    }
+    if (sess) await db.auth.setSession({ access_token: sess.access_token, refresh_token: sess.refresh_token }).catch(() => { });
+    saveUsers();
+    renderUsers();
+    if (fixed.length) {
+      flashSaveStatus("Cloud accounts ready: " + fixed.join(", ") + (blocked.length ? " — fix needed for: " + blocked.join(", ") : "") + ".", !!blocked.length);
+    } else if (blocked.length) {
+      flashSaveStatus("Can't bind: " + blocked.join(", ") + ". Option 1: in Users, re-add each with its ORIGINAL password. Option 2: delete it in Supabase > Authentication > Users, then re-add.", true);
+    }
   }
 }
 
@@ -636,7 +666,7 @@ async function ensureCloudSession(username, password, authorizedLocally) {
     const signIn = await db.auth.signInWithPassword({ email, password });
     if (!signIn.error) {
       const u = await cloudGetAuthUser();
-      if (u) await cloudProvisionProfile(u, username);
+      if (u) await cloudProvisionProfile(u, username).catch(() => {});
       return true;
     }
   } catch (e) { /* no session yet */ }
@@ -647,7 +677,7 @@ async function ensureCloudSession(username, password, authorizedLocally) {
     const signIn2 = await db.auth.signInWithPassword({ email, password });
     if (signIn2.error) return false;
     const u = await cloudGetAuthUser();
-    if (u) await cloudProvisionProfile(u, username);
+    if (u) await cloudProvisionProfile(u, username).catch(() => {});
     return true;
   } catch (e) { return false; }
 }
@@ -2596,6 +2626,9 @@ async function handleUserFormSubmit(e) {
           rec.username = username;
           rec.id = uid;
           rec.password = pwd;
+          rec.role = rec.role || "User";
+          rec.status = rec.status || "Active";
+          await ensureCloudProfileRecord(rec);
           users.push(rec);
           await saveUsers();
           renderUsers();
@@ -2610,7 +2643,10 @@ async function handleUserFormSubmit(e) {
       rec.username = username;
       rec.id = (su && su.user && su.user.id) || null;
       rec.password = pwd;
+      rec.role = rec.role || "User";
+      rec.status = rec.status || "Active";
       if (!rec.id) { alert("Cloud account was created but we could not link it. Please try again."); return; }
+      await ensureCloudProfileRecord(rec);
       users.push(rec);
       await saveUsers();
       try {
