@@ -1778,7 +1778,9 @@ function renderCards() {
   setKpi("statOngoingPct", pct(Math.max(ongoing,0)) + "% of total"); setKpi("statOngoingPct2", pct(Math.max(ongoing,0)) + "% of total");
   setKpi("statDelayedPct", pct(delayed) + "% of total"); setKpi("statDelayedPct2", pct(delayed) + "% of total");
 
-  document.getElementById("notifCount").textContent = delayed;
+  const notifEl = document.getElementById("notifCount");
+  notifEl.textContent = delayed;
+  notifEl.classList.toggle("hidden", delayed === 0);
   const bell = document.querySelector(".bell-wrap");
   if (bell) bell.classList.toggle("alert", delayed > 0);
   renderExecutive();
@@ -2047,6 +2049,7 @@ function openDetails(id) {
   selectedId = id;
   const panel = document.getElementById("detailsPanel");
   panel.classList.remove("hidden");
+  if (window.matchMedia("(max-width: 1180px)").matches) document.getElementById("scrim").classList.remove("hidden");
   document.getElementById("dpEdit").style.display = canEdit() ? "" : "none";
 
   document.getElementById("dpProjectNo").textContent = p.id;
@@ -2088,6 +2091,7 @@ function openDetails(id) {
 function closeDetails() {
   selectedId = null;
   document.getElementById("detailsPanel").classList.add("hidden");
+  document.getElementById("scrim").classList.add("hidden");
   renderTable();
 }
 
@@ -2309,7 +2313,7 @@ function showView(view) {
     const el = document.getElementById(id);
     if (el) el.classList.toggle("hidden", id !== map[view]);
   });
-  if (view === "projects" && selectedId) openDetails(selectedId);
+  if (view === "projects" && selectedId && window.matchMedia("(min-width: 1181px)").matches) openDetails(selectedId);
   if (view === "todo") renderTodoList();
   if (view === "guide") renderGuideDraft();
   if (view === "users") renderUsers();
@@ -2341,7 +2345,11 @@ function setupSidebarNav() {
       sidebar.classList.toggle("collapsed");
     }
   });
-  document.getElementById("scrim").addEventListener("click", closeMobileNav);
+  document.getElementById("scrim").addEventListener("click", () => {
+    closeMobileNav();
+    const panel = document.getElementById("detailsPanel");
+    if (!panel.classList.contains("hidden")) closeDetails();
+  });
 }
 
 // ---- Login / logout / profile ----

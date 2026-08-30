@@ -53,8 +53,12 @@
   --gray-600: #4b566c;
   --gray-700: #354052;
   --gray-900: #131c2b;
+  --white: #ffffff;
+
+  --green-400: #4ade80;
 
   --radius-s: 6px;
+  --radius-m: 12px;
   --radius: 10px;
   --radius-l: 14px;
   --shadow-sm: 0 1px 2px rgba(10, 24, 48, 0.06);
@@ -1027,8 +1031,17 @@ tbody tr.selected { background: var(--blue-50); box-shadow: inset 3px 0 0 var(--
   .cards { grid-template-columns: repeat(3, 1fr); }
   .panel-grid, .panel-grid.even { grid-template-columns: 1fr; }
 }
-@media (max-width: 1180px) {
-  .details-panel { display: none; }
+@media (min-width: 761px) and (max-width: 1180px) {
+  .details-panel {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 336px; max-width: 92vw;
+    border-radius: 0; z-index: 60;
+    transform: translateX(102%);
+    box-shadow: -10px 0 34px rgba(6, 16, 31, 0.22);
+    border-left: 1px solid var(--gray-200);
+    transition: transform 0.25s ease;
+  }
+  .details-panel:not(.hidden) { transform: translateX(0); }
 }
 @media (max-width: 760px) {
   .app { display: block; }
