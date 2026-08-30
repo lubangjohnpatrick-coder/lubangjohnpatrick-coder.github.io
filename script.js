@@ -2745,30 +2745,6 @@ function setupSettingsEvents() {
   document.getElementById("testAIBtn").addEventListener("click", testAIConnection);
   document.getElementById("settingsExportBtn").addEventListener("click", exportProjects);
   document.getElementById("settingsImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
-  document.getElementById("removeSamplesBtn").addEventListener("click", () => {
-    const SAMPLE_IDS = new Set(Array.from({ length: 16 }, (_, i) => "AACE-2026-" + String(i + 1).padStart(3, "0")));
-    const targets = projects.filter(p => SAMPLE_IDS.has(p.id));
-    if (!targets.length) { alert("No example projects (AACE-2026-001-016) to remove."); return; }
-    if (!confirm("Remove " + targets.length + " example project(s) (AACE-2026-001…016) from this browser and the shared cloud?\n\nYour real projects (TPHC / PH26P / Creation numbers) are not touched.")) return;
-    targets.forEach(p => addPendingCloudDelete(p.id));
-    projects = dedupeProjectsById(projects.filter(p => !SAMPLE_IDS.has(p.id)));
-    saveProjects();
-    renderFilterOptions();
-    renderCards();
-    renderTable();
-    alert("Removed " + targets.length + " example project(s). Deleted ones are now permanent across all devices — they cannot come back.");
-  });
-  document.getElementById("clearDataBtn").addEventListener("click", () => {
-    if (confirm("Delete ALL projects from this browser and the shared cloud? This cannot be undone.\n\nTip: use Export Backup first to be safe.")) {
-      addPendingCloudDelete(projects.map(p => p.id));
-      projects = [];
-      saveProjects();
-      renderFilterOptions();
-      renderCards();
-      renderTable();
-      alert("All project data has been cleared.");
-    }
-  });
 }
 
 // ---------------------------------------------------------------------
