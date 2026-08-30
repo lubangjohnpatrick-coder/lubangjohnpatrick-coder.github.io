@@ -2868,10 +2868,10 @@ function setupSettingsEvents() {
   document.getElementById("settingsExportBtn").addEventListener("click", exportProjects);
   document.getElementById("settingsImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
   document.getElementById("removeSamplesBtn").addEventListener("click", () => {
-    const SAMPLE_IDS = Array.from({ length: 16 }, (_, i) => "AACE-2026-" + String(i + 1).padStart(3, "0"));
+    const SAMPLE_IDS = Array.from({ length: 8 }, (_, i) => "AACE-2026-" + String(i + 1).padStart(3, "0"));
     const targets = projects.filter(p => SAMPLE_IDS.includes(p.id));
-    if (!targets.length) { alert("No example projects (AACE-2026-001-016) to remove."); return; }
-    if (!confirm("Remove " + targets.length + " example projects (AACE-2026-001…016) from this browser and the shared cloud?\n\nYour other projects are not touched.")) return;
+    if (!targets.length) { alert("No example projects (AACE-2026-001-008) to remove."); return; }
+    if (!confirm("Remove " + targets.length + " example projects (AACE-2026-001…008) from this browser and the shared cloud?\n\nYour other projects (including the Plant 3 AACE-2026-009-016) are not touched.")) return;
     targets.forEach(p => addPendingCloudDelete(p.id));
     projects = projects.filter(p => !SAMPLE_IDS.includes(p.id));
     saveProjects();
