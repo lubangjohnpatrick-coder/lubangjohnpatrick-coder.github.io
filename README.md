@@ -34,7 +34,7 @@ Recommended: make the repository **private** — the seed and future data are co
    - `supabase-lib.js`
    - `supabase-config.js`
    - `supabase-schema.sql`
-   - `aace logo.png`
+   - `aace_logo.png`
 3. Open the repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / root. You can also *Preview* under "Actions" to confirm the build.
 4. The app will be served at `https://<your-user>.github.io/<repo>/`.
 
@@ -55,6 +55,27 @@ The Supabase client is bundled locally (`supabase-lib.js`), so the app needs no 
 - The Gemini API key lives only in your browser's localStorage; it is never stored in the repo.
 - Because RLS grants access to any signed-in account, if the repo is public, change the seed user passwords after the first cloud sign-in.
 
+## Troubleshooting
+
+**Cloud status stuck on "local only" even though `supabase-config.js` has the right URL/key.**
+This almost always means `supabase-config.js` failed to *parse*, not that it's misconfigured.
+It's loaded as a plain classic `<script>` tag (no `type="module"`), so it must **never** contain
+`import` / `export` statements — those throw a `SyntaxError` at load time, the whole file silently
+fails to run, and `window.AACE_CLOUD` never gets set. Open DevTools → Console: a red error pointing
+at `supabase-config.js`, or a `[AACE Cloud]` warning explaining exactly what's missing, confirms it.
+
+**Logo (or any asset) shows as a broken image after deploying.**
+Check the exact filename in `index.html` against what's actually in the repo — filenames with
+spaces are fragile through git/GitHub Pages URL-encoding. This project intentionally uses
+`aace_logo.png` (underscore, no space) everywhere for that reason.
+
+**"Your cloud account is active but has no profile yet."**
+An administrator needs to link it: **Users → Add user** with that same username/password → **Sync now**.
+
+**A user's password works locally but the shared cloud rejects it.**
+The cloud account (Supabase Auth) has an older password than the local one. Re-add the user in
+**Users**, or delete their row in **Supabase → Authentication → Users** and re-add them in-app.
+
 ## Files
 
 | File | Purpose |
@@ -65,4 +86,4 @@ The Supabase client is bundled locally (`supabase-lib.js`), so the app needs no 
 | `supabase-lib.js` | Bundled Supabase JS client (no external CDN needed) |
 | `supabase-config.js` | Cloud connection settings (URL + anon key) |
 | `supabase-schema.sql` | Supabase tables + Row-Level Security (run once) |
-| `aace logo.png` | App logo |
+| `aace_logo.png` | App logo |

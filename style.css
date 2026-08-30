@@ -765,6 +765,9 @@ tbody tr.selected { background: var(--blue-50); box-shadow: inset 3px 0 0 var(--
 .login-hint { margin-top: 14px; font-size: 11px; color: var(--gray-400); text-align: center; }
 .login-quick { margin-top: 18px; text-align: center; }
 .login-quick-title { font-size: 11px; color: var(--gray-400); margin-bottom: 8px; }
+#firstRunBox { padding-top: 4px; }
+#firstRunBox .login-quick-title { font-size: 12px; color: var(--gray-600); margin-bottom: 10px; }
+#firstRunBox .form-row label { color: var(--gray-500); }
 .login-quick-btn { margin: 3px; }
 
 /* ---------- Pages (Users / Settings) ---------- */

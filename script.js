@@ -371,17 +371,9 @@ function loadUsers() {
       if (!Array.isArray(users)) users = [];
     }
   } catch (e) { /* ignore */ }
-  const hasAdmin = users.some(u => u.username && u.username.toLowerCase() === DEFAULT_ADMIN.username.toLowerCase());
-  if (users.length === 0 || !hasAdmin) {
-    users.unshift({
-      username: DEFAULT_ADMIN.username,
-      password: DEFAULT_ADMIN.password,
-      displayName: DEFAULT_ADMIN.username,
-      role: "Administrator",
-      department: "AACE",
-      status: "Active"
-    });
-  }
+  // No hardcoded accounts are seeded anymore: a brand-new device starts
+  // with zero accounts and the first person creates the Administrator via
+  // the login screen (first-run setup). Existing devices keep their users.
   // Migrate older stored records that have no password field.
   users.forEach(u => {
     if (!u.username) return;
@@ -474,6 +466,21 @@ function isCloudConfigured() {
     && !!window.supabase && typeof window.supabase === "object" && !!window.supabase.createClient;
 }
 
+// Logs exactly why cloud sync is off, instead of failing silently.
+// Run once at startup (see initCloud). A misconfigured or missing
+// supabase-config.js / supabase-lib.js used to degrade to "local
+// only" with zero visible signal — this makes that diagnosable in
+// ~5 seconds from the browser console instead of a support ticket.
+function diagnoseCloudSetup() {
+  const hasLib = !!window.supabase && typeof window.supabase.createClient === "function";
+  const hasConfig = typeof window.AACE_CLOUD === "object" && !!window.AACE_CLOUD && !!window.AACE_CLOUD.url && !!window.AACE_CLOUD.anonKey;
+  if (hasLib && hasConfig) return; // fully configured — nothing to report
+  const reasons = [];
+  if (!hasLib) reasons.push("supabase-lib.js did not load (check the <script src> path/order in index.html, and that the file wasn't renamed).");
+  if (!hasConfig) reasons.push("window.AACE_CLOUD was never set by supabase-config.js. Most likely cause: a syntax error in that file (e.g. import/export statements — it must be a plain classic script, not a module). Open DevTools → Console and look for a red error pointing at supabase-config.js.");
+  console.warn("[AACE Cloud] Cloud sync is OFF — running local-only.\n - " + reasons.join("\n - "));
+}
+
 function loadSupabaseLib() {
   return new Promise((resolve, reject) => {
     if (window.supabase && window.supabase.createClient) return resolve(true);
@@ -492,7 +499,12 @@ function initCloud() {
       db = window.supabase.createClient(window.AACE_CLOUD.url, window.AACE_CLOUD.anonKey, {
         auth: { persistSession: true, autoRefreshToken: true }
       });
-    } catch (e) { db = null; cloudConfigured = false; }
+    } catch (e) {
+      db = null; cloudConfigured = false;
+      console.warn("[AACE Cloud] window.supabase.createClient() threw — check that the URL/anon key in supabase-config.js are valid.", e);
+    }
+  } else {
+    diagnoseCloudSetup();
   }
   setCloudStatus(cloudReady, cloudConfigured ? "offline" : "local only");
 }
@@ -2385,6 +2397,15 @@ function setupSidebarNav() {
 // ---- Login / logout / profile ----
 async function doSignIn(u, p, err) {
   if (!u || !p) { if (err) err.textContent = "Please enter both username and password."; return; }
+  if (users.length === 0) {
+    // No accounts exist on this device yet — there is nothing to sign in to.
+    // The first person must create the Administrator via the setup panel.
+    updateLoginMode();
+    const fr = document.getElementById("firstRunBox");
+    if (fr) fr.scrollIntoView({ block: "center" });
+    if (err) err.textContent = "";
+    return;
+  }
   const localUser = findUserByUsername(u);
   const localOk = await (localUser ? verifyAndMigrateUserPassword(localUser, p) : false);
   if (cloudConfigured && db) {
@@ -2445,6 +2466,9 @@ function renderQuickSwitch() {
     .filter(n => {
       if (n === getSessionUser()) return false;
       const lu = users.find(x => x && x.username === n);
+      // Never one-tap an Administrator (or the old hardcoded admin) open —
+      // those accounts always require the password to be typed.
+      if (lu && (lu.role === "Administrator" || n.toLowerCase() === DEFAULT_ADMIN.username.toLowerCase())) return false;
       return lu && lu.password && !isHashedPassword(lu.password);
     }).slice(0, 6);
   if (!names.length) { host.innerHTML = ""; return; }
@@ -2461,6 +2485,20 @@ function renderQuickSwitch() {
     });
   });
 }
+
+// A brand-new device has no accounts yet: show the first-run setup that
+// creates the Administrator instead of the normal sign-in form.
+function updateLoginMode() {
+  const firstRun = users.length === 0;
+  const form = document.getElementById("loginForm");
+  const qs = document.getElementById("quickSwitch");
+  const fr = document.getElementById("firstRunBox");
+  if (!form || !fr) return;
+  form.style.display = firstRun ? "none" : "";
+  if (qs) qs.style.display = firstRun ? "none" : "";
+  fr.classList.toggle("hidden", !firstRun);
+}
+
 function setupLogin() {
   document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -2469,6 +2507,29 @@ function setupLogin() {
     const err = document.getElementById("loginError");
     doSignIn(u, p, err);
   });
+  document.getElementById("firstRunForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const err = document.getElementById("frError");
+    const name = document.getElementById("frUsername").value.trim();
+    const pwd = document.getElementById("frPassword").value;
+    const pwd2 = document.getElementById("frPassword2").value;
+    if (!name) { err.textContent = "Pick a username for the administrator."; return; }
+    if (pwd.length < 4) { err.textContent = "Use a password with at least 4 characters."; return; }
+    if (pwd !== pwd2) { err.textContent = "The two passwords do not match."; return; }
+    users.unshift({
+      username: name,
+      password: pwd,
+      displayName: name,
+      role: "Administrator",
+      department: "AACE",
+      status: "Active",
+      perms: { view: true, add: true, edit: true }
+    });
+    saveUsers();
+    setSessionUser(name);
+    location.reload();
+  });
+  updateLoginMode();
   renderQuickSwitch();
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     clearSession();

@@ -1,48 +1,68 @@
 /* ============================================================
    AACE PROJECT DASHBOARD — Supabase cloud connection settings
    ============================================================
-   This file is MEANT to be committed and uploaded with the app.
+   This file is loaded as a PLAIN, CLASSIC <script> in index.html
+   (there is no `type="module"` on that tag). That means:
+
+     ⚠ DO NOT add `import` / `export` statements to this file.
+       A classic script can't parse ES module syntax — the browser
+       throws a SyntaxError at load time, the whole file fails to
+       run, and window.AACE_CLOUD is silently never set. From the
+       app's point of view that looks identical to "not configured
+       yet", so cloud sync just quietly stays on "local only"
+       forever with no visible error. (This is exactly what broke
+       cloud sync before this fix.)
+
+     If you ever need the official `@supabase/supabase-js` NPM
+     package instead of the bundled `supabase-lib.js`, either:
+       a) keep using the UMD build (like supabase-lib.js) and a
+          classic <script> tag, or
+       b) switch BOTH <script> tags in index.html to
+          type="module" and update script.js's cloud layer to
+          `import` the client instead of reading window.supabase.
+     Don't mix the two — pick one loading style per file.
+
    Values below are PUBLIC by design:
-     - Project URL is not sensitive
-     - "anon" / "publishable" key lets anyone send requests,
-       but Row-Level Security (RLS) rules block unauthorized access.
-   NEVER use the service_role key in frontend code.
+     - The project URL is not sensitive.
+     - The "anon" / "publishable" key only lets a browser send
+       requests — Row-Level Security policies in
+       supabase-schema.sql decide what it's actually allowed to
+       read or write. Anonymous (signed-out) visitors are blocked
+       entirely; see the policies at the bottom of that file.
+
+   NEVER put the service_role secret key here, or anywhere in the
+   frontend — it bypasses Row-Level Security completely and must
+   only ever live inside the Supabase dashboard / server-side code.
    ============================================================ */
 
-import { createClient } from '@supabase/supabase-js'
-
-const AACE_CLOUD = {
+window.AACE_CLOUD = {
   url: "https://fmoxsqgnvfyszxcsypgb.supabase.co",
   anonKey: "sb_publishable_7t0973gQ1FjqXdsjXLhrOw_toMu8dwM"
-}
-
-// Create Supabase client instance
-export const supabase = createClient(AACE_CLOUD.url, AACE_CLOUD.anonKey)
+};
 
 /* ============================================================
-   IMPORTANT SETUP NOTES
+   ONE-TIME SUPABASE SETUP CHECKLIST
    ============================================================
-   1. Run the setup SQL (supabase-schema.sql) in Supabase > SQL Editor.
-   2. Enable Row Level Security (RLS) on tables like user_profiles.
-   3. Create proper policies, e.g.:
+   1. SQL Editor → New query → paste the entire contents of
+      supabase-schema.sql → Run.
+      This creates the `projects` / `user_profiles` tables and
+      all Row-Level Security policies (including the helper
+      functions is_cloud_admin() and is_first_user()).
 
-      alter table user_profiles enable row level security;
+   2. Authentication → Providers → Email → set "Confirm email"
+      to OFF, so new accounts can sign in immediately without
+      clicking a confirmation link first.
 
-      drop policy if exists "user_profiles_insert" on user_profiles;
+   3. Settings → API → confirm the "Project URL" and the
+      "anon / publishable" key above match this Supabase project.
+      (Project Settings → API → Project API keys.)
 
-      create policy "user_profiles_insert"
-      on user_profiles
-      for insert
-      to authenticated
-      with check (
-        is_cloud_admin()
-        or is_first_user()
-        or id = auth.uid()
-      );
+   4. In the app: sign in with a local account, then turn on the
+      cloud toggle. The first account to successfully sync is
+      automatically provisioned as Administrator.
 
-   4. Turn OFF email confirmation so new accounts can sign in immediately:
-      Supabase Dashboard → Authentication → Providers → Email → "Confirm email" = OFF
-
-   5. Make sure your user_profiles table has a UUID column (id or user_id)
-      that matches auth.uid() from Supabase Auth.
+   Quick self-check after setup — open the browser console and
+   look for a line starting with "[AACE Cloud]". No such line
+   means this file loaded and parsed correctly; a warning there
+   tells you exactly what's still missing.
    ============================================================ */
