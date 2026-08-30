@@ -4,39 +4,73 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AACE Project Dashboard — Capital Expenditure Monitoring System</title>
-<link rel="stylesheet" href="style.css?v=30">
-<script src="supabase-lib.js?v=30"></script>
-<script src="supabase-config.js?v=30"></script>
+<link rel="stylesheet" href="style.css?v=31">
+<script src="supabase-lib.js?v=31"></script>
+<script src="supabase-config.js?v=31"></script>
 </head>
 <body>
 
-  <!-- LOGIN SCREEN -->
-  <div class="login-overlay hidden" id="loginOverlay">
-    <div class="login-box">
-      <div class="login-brand-row">
-        <div class="login-mark"><img src="aace logo.png?v=30" alt="AACE logo"></div>
-        <div>
-          <div class="login-title">AACE Project Dashboard</div>
-          <div class="login-subtitle">Capital Expenditure Monitoring System</div>
-        </div>
+<!-- LOGIN SCREEN -->
+<div class="login-overlay hidden" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-brand-row">
+      <div class="login-mark">
+        <img src="aace logo.png?v=31" alt="AACE logo">
       </div>
-      <div class="login-rule"></div>
-      <form id="loginForm">
+      <div>
+        <div class="login-title">AACE Project Dashboard</div>
+        <div class="login-subtitle">Capital Expenditure Monitoring System</div>
+      </div>
+    </div>
+    <div class="login-rule"></div>
+
+    <!-- LOGIN FORM -->
+    <form id="loginForm" autocomplete="off">
+      <div class="form-row">
+        <label for="loginUser">Username</label>
+        <input type="text" id="loginUser" name="username" 
+               autocomplete="new-username" placeholder="Enter your username" required>
+      </div>
+      <div class="form-row">
+        <label for="loginPass">Password</label>
+        <input type="password" id="loginPass" name="password" 
+               autocomplete="new-password" placeholder="Enter your password" required>
+      </div>
+      <div id="loginError" class="login-error"></div>
+      <button type="submit" class="btn btn-primary login-btn">Sign In</button>
+      <div class="login-hint">Any account created in the Users page can sign in here.</div>
+    </form>
+
+    <!-- FIRST RUN (ADMIN CREATION) -->
+    <div id="firstRunBox" class="login-quick hidden">
+      <div class="login-quick-title">
+        No accounts exist on this device yet — create the administrator account to begin.
+      </div>
+      <form id="firstRunForm" autocomplete="off">
         <div class="form-row">
-          <label>Username</label> 
-          <input type="text" id="loginUser" autocomplete="username" required>
+          <label for="frUsername">Admin username</label>
+          <input type="text" id="frUsername" name="admin_username" 
+                 autocomplete="new-username" required>
         </div>
         <div class="form-row">
-          <label>Password</label>
-          <input type="password" id="loginPass" autocomplete="current-password" required>
+          <label for="frPassword">Admin password</label>
+          <input type="password" id="frPassword" name="admin_password" 
+                 autocomplete="new-password" required>
         </div>
-        <div id="loginError" class="login-error"></div>
-        <button type="submit" class="btn btn-primary login-btn">Sign In</button>
-        <div class="login-hint">Any account created in the Users page can sign in here.</div>
+        <div class="form-row">
+          <label for="frPassword2">Repeat password</label>
+          <input type="password" id="frPassword2" name="admin_password_repeat" 
+                 autocomplete="new-password" required>
+        </div>
+        <div id="frError" class="login-error"></div>
+        <button type="submit" class="btn btn-primary login-btn">
+          Create Administrator &amp; Sign In
+        </button>
       </form>
-      <div id="quickSwitch" class="login-quick"></div>
     </div>
   </div>
+</div>
+
 
 <div class="scrim hidden" id="scrim"></div>
 
@@ -45,7 +79,7 @@
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <div class="brand-mark"><img src="aace logo.png?v=30" alt="AACE logo"></div>
+      <div class="brand-mark"><img src="aace logo.png?v=31" alt="AACE logo"></div>
       <div class="brand-text">
         <div class="t1">AACE</div>
         <div class="t2">CAPITAL PROJECTS MONITORING</div>
@@ -742,6 +776,6 @@
   </div>
 </div>
 
-<script src="script.js?v=30"></script>
+<script src="script.js?v=31"></script>
 </body>
 </html>
