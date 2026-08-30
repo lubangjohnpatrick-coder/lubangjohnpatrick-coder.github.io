@@ -2867,6 +2867,19 @@ function setupSettingsEvents() {
   document.getElementById("testAIBtn").addEventListener("click", testAIConnection);
   document.getElementById("settingsExportBtn").addEventListener("click", exportProjects);
   document.getElementById("settingsImportBtn").addEventListener("click", () => document.getElementById("importFile").click());
+  document.getElementById("removeSamplesBtn").addEventListener("click", () => {
+    const SAMPLE_IDS = Array.from({ length: 16 }, (_, i) => "AACE-2026-" + String(i + 1).padStart(3, "0"));
+    const targets = projects.filter(p => SAMPLE_IDS.includes(p.id));
+    if (!targets.length) { alert("No example projects (AACE-2026-001-016) to remove."); return; }
+    if (!confirm("Remove " + targets.length + " example projects (AACE-2026-001…016) from this browser and the shared cloud?\n\nYour other projects are not touched.")) return;
+    targets.forEach(p => addPendingCloudDelete(p.id));
+    projects = projects.filter(p => !SAMPLE_IDS.includes(p.id));
+    saveProjects();
+    renderFilterOptions();
+    renderCards();
+    renderTable();
+    alert("Removed " + targets.length + " example projects.");
+  });
   document.getElementById("clearDataBtn").addEventListener("click", () => {
     if (confirm("Delete ALL projects from this browser and the shared cloud? This cannot be undone.\n\nTip: use Export Backup first to be safe.")) {
       addPendingCloudDelete(projects.map(p => p.id));
