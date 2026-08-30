@@ -266,8 +266,15 @@ function computeProjectCounter(list) {
   }, 0);
   return maxNum + 1;
 }
+function dedupeProjectsById(list) {
+  const m = new Map();
+  (list || []).forEach(p => { if (p && p.id) m.set(p.id, p); });
+  return [...m.values()];
+}
 
 // Push the local project list to the shared database (and pull anything we missed).
+// Deletions become TOMBSTONE rows in the cloud ({ tombstone: true }) so EVERY
+// device forgets deleted projects instead of re-uploading them.
 function syncProjectsToCloud() {
   if (!db) {
     flashSaveStatus("Saved in this browser · " + timeNow());
@@ -287,26 +294,31 @@ function syncProjectsToCloud() {
       const deleted = pendingCloudDeletes();
       const { data, error } = await db.from("projects").select("id, data");
       if (error) throw error;
-      const localMap = new Map(projects.map(p => [p.id, p]));
+      const tombstoneIds = new Set();
+      const localMap = new Map();
+      (projects || []).forEach(p => { if (p && p.id) localMap.set(p.id, p); });
       const finalMap = new Map();
       (data || []).forEach(r => {
         if (!r || !r.data) return;
         const pid = r.data.id || r.id;
+        if (r.data.tombstone === true) { tombstoneIds.add(pid); return; }
         if (deleted.has(pid)) return;
         finalMap.set(pid, localMap.has(pid) ? localMap.get(pid) : r.data);
       });
-      projects.forEach(p => { if (p && p.id && !finalMap.has(p.id) && !deleted.has(p.id)) finalMap.set(p.id, p); });
+      (projects || []).forEach(p => {
+        if (!p || !p.id) return;
+        if (deleted.has(p.id) || tombstoneIds.has(p.id)) return;
+        if (!finalMap.has(p.id)) finalMap.set(p.id, p);
+      });
       projects = [...finalMap.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
       projectCounter = computeProjectCounter(projects);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-      const rows = projects.map(p => ({ id: p.id, data: p, updated_at: new Date().toISOString() }));
+      const rows = [];
+      projects.forEach(p => rows.push({ id: p.id, data: p, updated_at: new Date().toISOString() }));
+      deleted.forEach(id => rows.push({ id, data: { id, tombstone: true, deletedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }));
       const { error: upErr } = await db.from("projects").upsert(rows, { onConflict: "id" });
       if (upErr) throw upErr;
-      if (deleted.size) {
-        const { error: delErr } = await db.from("projects").delete().in("id", [...deleted]);
-        if (delErr) throw delErr;
-        clearPendingCloudDeletes();
-      }
+      clearPendingCloudDeletes();
       flashSaveStatus("Saved to shared cloud · " + timeNow());
       renderFilterOptions();
       renderCards();
@@ -334,7 +346,7 @@ function flashSaveStatus(msg, isWarning) {
 function loadProjects() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { projects = JSON.parse(raw); return true; }
+    if (raw) { projects = dedupeProjectsById(JSON.parse(raw)); return true; }
   } catch (e) { /* ignore */ }
   return false;
 }
@@ -684,16 +696,22 @@ async function pullCloudProjects() {
     const deleted = pendingCloudDeletes();
     const { data, error } = await db.from("projects").select("id, data, updated_at");
     if (error) throw error;
-    const rows = (data || []).map(r => r.data).filter(r => r && r.id);
-    if (rows.length) {
-      const map = new Map();
-      rows.forEach(p => { if (!deleted.has(p.id)) map.set(p.id, p); });
-      projects.forEach(p => { if (p && p.id && !map.has(p.id) && !deleted.has(p.id)) map.set(p.id, p); });
-      projects = [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      projectCounter = computeProjectCounter(projects);
-    } else if (projects.length) {
-      await cloudUpsertProjects(projects); // first-time migration: push local data up
-    }
+    const map = new Map();
+    const tombstoneIds = new Set();
+    (data || []).forEach(r => {
+      if (!r || !r.data) return;
+      const pid = r.data.id || r.id;
+      if (r.data.tombstone === true) { tombstoneIds.add(pid); return; }
+      if (!deleted.has(pid)) map.set(pid, r.data);
+    });
+    (projects || []).forEach(p => {
+      if (!p || !p.id) return;
+      if (deleted.has(p.id) || tombstoneIds.has(p.id)) return;
+      if (!map.has(p.id)) map.set(p.id, p);
+    });
+    projects = [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    projectCounter = computeProjectCounter(projects);
+    if (!data || !data.length) await cloudUpsertProjects(projects); // first-time migration: push local data up
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (x) { /* ignore */ }
     renderFilterOptions();
     renderCards();
@@ -2414,7 +2432,7 @@ function importProjects(file) {
       } else {
         const existingIds = new Set(projects.map(p => p.id));
         data.forEach(p => { if (existingIds.has(p.id)) p.id = p.id + "-imp"; });
-        projects = projects.concat(data);
+        projects = dedupeProjectsById(projects.concat(data));
       }
       projectCounter = computeProjectCounter(projects);
       saveProjects();
