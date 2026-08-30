@@ -11,7 +11,7 @@
 <body>
 
 <!-- LOGIN SCREEN -->
-<div class="login-overlay hidden" id="loginOverlay">
+<div class="login-overlay" id="loginOverlay">
   <div class="login-box">
     <div class="login-brand-row">
       <div class="login-mark">
@@ -45,7 +45,7 @@
 
 <div class="scrim hidden" id="scrim"></div>
 
-<div class="app">
+<div class="app hidden">
 
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
@@ -67,7 +67,7 @@
       <li><a class="nav-link" data-view="users"><span class="icon">&#128101;</span><span class="label">Users</span></a></li>
       <li><a class="nav-link" data-view="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></a></li>
     </ul>
-    <div class="sidebar-foot">AACE Capital Projects System<br><b>v1.0</b> &middot; Offline-first &middot; Cloud-sync ready</div>
+    <div class="sidebar-foot">AACE Capital Projects System<br><b>v1.0</b> &middot; Supabase cloud</div>
   </aside>
 
   <!-- MAIN -->
@@ -92,10 +92,10 @@
           <span class="badge-dot" id="notifCount">0</span>
         </div>
         <div class="profile">
-          <div class="avatar" id="userAvatar">JG</div>
+          <div class="avatar" id="userAvatar">--</div>
           <div class="who">
-            <div class="name" id="userName">JapongTheGreat</div>
-            <div class="role" id="userRole">Administrator</div>
+            <div class="name" id="userName"></div>
+            <div class="role" id="userRole"></div>
           </div>
         </div>
         <div class="topbar-divider"></div>
@@ -111,9 +111,9 @@
       <div class="content-main">
 
 <div class="updated-row">
-          <span id="saveStatus">All changes saved in this browser</span>
+          <span id="saveStatus">Cloud changes are saved after confirmation</span>
           <span class="sep">&nbsp;·&nbsp;</span>
-          <span id="cloudStatus" class="cloud-dot off">● local only</span>
+          <span id="cloudStatus" class="cloud-dot off">● cloud disconnected</span>
           <span class="sep">&nbsp;·&nbsp;</span>
           Last updated: <span id="lastUpdated"></span>
           <button class="btn btn-sm" id="syncNowBtn" title="Push everything from this browser to the shared cloud now">Sync now</button>
@@ -589,12 +589,12 @@
         <div class="settings-card">
           <h3>About &amp; System Architecture</h3>
           <p class="muted">AACE Project Dashboard &mdash; Capital Expenditure Monitoring System.<br>
-          Version 1.0 &middot; Offline-first &middot; Multimedia division of labor across Finance, Engineering, Management and IT.</p>
+          Version 1.0 &middot; Supabase cloud-only &middot; Multimedia division of labor across Finance, Engineering, Management and IT.</p>
           <div class="arch-stack">
             <div class="arch-layer"><span class="pl pl-pres">PRESENTATION</span><span>Executive dashboard, project register, detail dossier, responsive UI</span></div>
             <div class="arch-layer"><span class="pl pl-app">APPLICATION</span><span>Approval workflow engine, permissions, AI assistant, reporting &amp; backups</span></div>
-            <div class="arch-layer"><span class="pl pl-data">DATA</span><span>Browser database (localStorage) &middot; JSON export / import</span></div>
-            <div class="arch-layer cloud"><span class="pl pl-cloud">CLOUD (OPTIONAL)</span><span>Supabase shared sync &middot; Row-Level Security &middot; hashed credentials</span></div>
+            <div class="arch-layer cloud"><span class="pl pl-cloud">DATA</span><span>Supabase database &middot; Row-Level Security &middot; JSON export / import</span></div>
+            <div class="arch-layer cloud"><span class="pl pl-cloud">AUTH</span><span>Supabase Auth &middot; cloud profiles &middot; role-based permissions</span></div>
           </div>
         </div>
       </div>

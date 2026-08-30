@@ -229,39 +229,33 @@ let sortState = { key: "projectNo", dir: "asc" };
 let selectedId = null;
 let projectCounter = 1;
 
-const STORAGE_KEY = "aace_dashboard_projects_v1";
-
 function timeNow() {
   return new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" });
 }
 
 function saveProjects() {
   if (!db || !cloudReady) {
-    flashSaveStatus("Online mode only: cloud sync is required. Please reconnect to the internet and refresh the page.", true);
+    flashSaveStatus("Cloud is unavailable. No project changes were saved.", true);
     return;
   }
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-  } catch (e) {
-    flashSaveStatus("⚠ Could not save to this browser's storage — export a backup to be safe", true);
-    return;
-  }
-  syncProjectsToCloud();
+  (async () => {
+    try {
+      await cloudUpsertProjects(projects);
+      if (deletedProjectIds.size) {
+        const { error } = await db.from("projects").delete().in("id", [...deletedProjectIds]);
+        if (error) throw error;
+        deletedProjectIds.clear();
+      }
+      flashSaveStatus("Saved to shared cloud · " + timeNow());
+    } catch (e) {
+      flashSaveStatus("Cloud save failed. No local copy was used.", true);
+    }
+  })();
 }
 
-function pendingCloudDeletes() {
-  try {
-    const raw = localStorage.getItem(PENDING_DEL_KEY);
-    return new Set(raw ? JSON.parse(raw) : []);
-  } catch (e) { return new Set(); }
-}
+const deletedProjectIds = new Set();
 function addPendingCloudDelete(ids) {
-  const s = pendingCloudDeletes();
-  (Array.isArray(ids) ? ids : [ids]).forEach(id => s.add(id));
-  try { localStorage.setItem(PENDING_DEL_KEY, JSON.stringify([...s])); } catch (e) { /* ignore */ }
-}
-function clearPendingCloudDeletes() {
-  try { localStorage.removeItem(PENDING_DEL_KEY); } catch (e) { /* ignore */ }
+  (Array.isArray(ids) ? ids : [ids]).forEach(id => deletedProjectIds.add(id));
 }
 function computeProjectCounter(list) {
   const maxNum = (list || []).reduce((m, p) => {
@@ -280,56 +274,16 @@ function dedupeProjectsById(list) {
 // Deletions become TOMBSTONE rows in the cloud ({ tombstone: true }) so EVERY
 // device forgets deleted projects instead of re-uploading them.
 function syncProjectsToCloud() {
-  if (!db) {
-    flashSaveStatus("Saved in this browser · " + timeNow());
-    return;
-  }
+  if (!db || !cloudReady) return;
   (async () => {
     try {
-      const sess = await db.auth.getSession();
-      if (sess.error || !sess.data.session) {
-        flashSaveStatus("Saved in this browser — sign in (or reconnect the cloud toggle) to share across devices · " + timeNow(), true);
-        return;
-      }
-      if (!cloudReady) {
-        cloudReady = true;
-        setCloudStatus(true, "shared cloud");
-      }
-      const deleted = pendingCloudDeletes();
-      const { data, error } = await db.from("projects").select("id, data");
-      if (error) throw error;
-      const tombstoneIds = new Set();
-      const localMap = new Map();
-      (projects || []).forEach(p => { if (p && p.id) localMap.set(p.id, p); });
-      const finalMap = new Map();
-      (data || []).forEach(r => {
-        if (!r || !r.data) return;
-        const pid = r.data.id || r.id;
-        if (r.data.tombstone === true) { tombstoneIds.add(pid); return; }
-        if (deleted.has(pid)) return;
-        finalMap.set(pid, localMap.has(pid) ? localMap.get(pid) : r.data);
-      });
-      (projects || []).forEach(p => {
-        if (!p || !p.id) return;
-        if (deleted.has(p.id) || tombstoneIds.has(p.id)) return;
-        if (!finalMap.has(p.id)) finalMap.set(p.id, p);
-      });
-      projects = [...finalMap.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
-      projectCounter = computeProjectCounter(projects);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-      const rows = [];
-      projects.forEach(p => rows.push({ id: p.id, data: p, updated_at: new Date().toISOString() }));
-      deleted.forEach(id => rows.push({ id, data: { id, tombstone: true, deletedAt: new Date().toISOString() }, updated_at: new Date().toISOString() }));
-      const { error: upErr } = await db.from("projects").upsert(rows, { onConflict: "id" });
-      if (upErr) throw upErr;
-      clearPendingCloudDeletes();
+      await cloudUpsertProjects(projects);
       flashSaveStatus("Saved to shared cloud · " + timeNow());
       renderFilterOptions();
       renderCards();
       renderTable();
     } catch (e) {
-      flashSaveStatus("Kept locally — will sync when back online", true);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (x) { /* ignore */ }
+      flashSaveStatus("Cloud save failed. No local copy was used.", true);
     }
   })();
 }
@@ -347,20 +301,10 @@ function flashSaveStatus(msg, isWarning) {
   clearTimeout(toast._hide);
   toast._hide = setTimeout(() => { toast.classList.remove("show"); }, 4200);
 }
-function loadProjects() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { projects = dedupeProjectsById(JSON.parse(raw)); return true; }
-  } catch (e) { /* ignore */ }
-  return false;
-}
-
 // ---------------------------------------------------------------------
 // 2.5 AUTH, SESSION & USERS
 // ---------------------------------------------------------------------
-const DEFAULT_ADMIN = { username: "JapongTheGreat", password: "AACEUpdate" };
 const SESSION_KEY = "aace_session_v1";
-const USERS_KEY = "aace_users_v1";
 
 let users = [];
 let editingUserId = null;
@@ -368,30 +312,11 @@ let modalMode = "add";
 let editingId = null;
 
 function loadUsers() {
-  try {
-    const raw = localStorage.getItem(USERS_KEY);
-    if (raw) {
-      users = JSON.parse(raw);
-      if (!Array.isArray(users)) users = [];
-    }
-  } catch (e) { /* ignore */ }
-  // No hardcoded accounts are seeded anymore: a brand-new device starts
-  // with zero accounts and the first person creates the Administrator via
-  // the login screen (first-run setup). Existing devices keep their users.
-  // Migrate older stored records that have no password field.
-  users.forEach(u => {
-    if (!u.username) return;
-    if (u.password === undefined || u.password === null) u.password = "";
-    if (!u.password && u.username.toLowerCase() === DEFAULT_ADMIN.username.toLowerCase()) u.password = DEFAULT_ADMIN.password;
-    if (u.status !== "Active" && u.status !== "Inactive") u.status = "Active";
-    if (!u.perms || typeof u.perms !== "object") u.perms = { view: true, add: true, edit: true };
-  });
-  saveUsers();
+  users = [];
 }
 function saveUsers() {
-  try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch (e) { /* ignore */ }
-  if (!db || !cloudReady || !isAdmin()) return;
-  (async () => {
+  if (!db || !cloudReady || !isAdmin()) return Promise.reject(new Error("Cloud user data is unavailable"));
+  return (async () => {
     try {
       const rows = users
         .filter(u => u && u.id)
@@ -408,7 +333,7 @@ function saveUsers() {
         const { error } = await db.from("user_profiles").upsert(rows, { onConflict: "id" });
         if (error) throw error;
       }
-    } catch (e) { /* cloud down — saved locally, will sync when back online */ }
+    } catch (e) { throw e; }
   })();
 }
 
@@ -463,7 +388,6 @@ let db = null;
 let cloudConfigured = false;
 let cloudReady = false;
 let cloudSyncTimer = null;
-const PENDING_DEL_KEY = "aace_pending_deletes_v1";
 
 function isCloudConfigured() {
   return typeof window.AACE_CLOUD === "object" && !!window.AACE_CLOUD && !!window.AACE_CLOUD.url && !!window.AACE_CLOUD.anonKey
@@ -510,7 +434,7 @@ function initCloud() {
   } else {
     diagnoseCloudSetup();
   }
-  setCloudStatus(cloudReady, cloudConfigured ? "offline" : "local only");
+  setCloudStatus(cloudReady, cloudConfigured ? "cloud disconnected" : "cloud unavailable");
 }
 
 function cloudEmail(username) {
@@ -558,7 +482,7 @@ function setCloudStatus(on, label) {
 async function cloudConnect() {
   if (!db) { cloudReady = false; return false; }
   try {
-    await cloudGetAuthUser();
+    if (!(await cloudGetAuthUser())) throw new Error("No authenticated cloud session");
     const probe = await db.from("projects").select("id").limit(1);
     if (probe.error) throw probe.error;
     cloudReady = true;
@@ -704,14 +628,12 @@ async function pullCloudUsers() {
   try {
     const au = await cloudGetAuthUser();
     if (!au) return false;
-    const saved = users.slice();
     const isLocalAdmin = isAdmin();
     let q = db.from("user_profiles").select("id, username, display_name, role, department, status, perms");
     if (!isLocalAdmin) q = q.eq("id", au.id);
     const { data, error } = await q;
     if (error) throw error;
     const mapped = (data || []).map(r => {
-      const local = saved.find(x => x.username === r.username) || null;
       return {
         id: r.id,
         username: r.username,
@@ -720,17 +642,10 @@ async function pullCloudUsers() {
         department: r.department || "",
         status: r.status || "Active",
         perms: r.perms && typeof r.perms === "object" ? r.perms : { view: true, add: false, edit: false },
-        password: local ? local.password : ""
+        password: ""
       };
     });
-    // Merge: cloud rows win for usernames they cover, but NEVER throw away
-    // users this browser already knows (that used to drop the other accounts
-    // from the Users list every time a non-admin signed in).
-    const byName = new Map();
-    mapped.forEach(r => { if (r.username) byName.set(r.username, r); });
-    saved.forEach(k => { if (!k || !k.username) return; if (!byName.has(k.username)) byName.set(k.username, k); });
-    users = [...byName.values()];
-    saveUsers();
+    users = mapped;
     return true;
   } catch (e) { return false; }
 }
@@ -739,30 +654,15 @@ async function pullCloudUsers() {
 async function pullCloudProjects() {
   if (!db || !cloudReady) return;
   try {
-    const deleted = pendingCloudDeletes();
     const { data, error } = await db.from("projects").select("id, data, updated_at");
     if (error) throw error;
-    const map = new Map();
-    const tombstoneIds = new Set();
-    (data || []).forEach(r => {
-      if (!r || !r.data) return;
-      const pid = r.data.id || r.id;
-      if (r.data.tombstone === true) { tombstoneIds.add(pid); return; }
-      if (!deleted.has(pid)) map.set(pid, r.data);
-    });
-    (projects || []).forEach(p => {
-      if (!p || !p.id) return;
-      if (deleted.has(p.id) || tombstoneIds.has(p.id)) return;
-      if (!map.has(p.id)) map.set(p.id, p);
-    });
-    projects = [...map.values()].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    projects = (data || []).filter(r => r && r.data && r.data.tombstone !== true).map(r => r.data)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
     projectCounter = computeProjectCounter(projects);
-    if (!data || !data.length) await cloudUpsertProjects(projects); // first-time migration: push local data up
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (x) { /* ignore */ }
     renderFilterOptions();
     renderCards();
     renderTable();
-  } catch (e) { /* stay on the local copy */ }
+  } catch (e) { flashSaveStatus("Could not load projects from the cloud.", true); }
 }
 
 async function cloudUpsertProjects(list) {
@@ -1087,7 +987,7 @@ function addAudit(projectId, text, source) {
     id: "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     projectId: projectId,
     ts: new Date().toISOString(),
-    user: getSessionUser() || DEFAULT_ADMIN.username,
+    user: getSessionUser() || "unknown",
     text: text,
     source: source || "auto"
   });
@@ -2430,9 +2330,25 @@ async function doSignIn(u, p, err) {
       return;
     }
 
-    await cloudProvisionProfile(data.user, u).catch(() => {});
-    await pullCloudUsers();
-    setSessionUser(u);
+    const { data: profile, error: profileError } = await db.from("user_profiles")
+      .select("id, username, display_name, role, department, status, perms")
+      .eq("id", data.user.id).maybeSingle();
+    if (profileError || !profile || profile.status !== "Active") {
+      await db.auth.signOut().catch(() => {});
+      if (err) err.textContent = "Your cloud account is not authorized for this dashboard.";
+      return;
+    }
+    setSessionUser(profile.username);
+    users = [{
+      id: profile.id,
+      username: profile.username,
+      displayName: profile.display_name || profile.username,
+      role: profile.role || "User",
+      department: profile.department || "",
+      status: profile.status,
+      perms: profile.perms || { view: true, add: false, edit: false },
+      password: ""
+    }];
     location.reload();
   } catch (e) {
     if (err) err.textContent = "Cloud sign-in failed. Please check your internet connection and try again.";
@@ -2462,8 +2378,8 @@ function setupLogin() {
 }
 
 function refreshProfile() {
-  const name = getSessionUser() || DEFAULT_ADMIN.username;
-  const u = findUserByUsername(name) || { username: name };
+  const u = currentUser();
+  if (!u) return;
   document.getElementById("userAvatar").textContent = initials(u.username);
   document.getElementById("userName").textContent = u.username;
   document.getElementById("userRole").textContent = u.role || "User";
@@ -2485,7 +2401,7 @@ function renderUsers() {
     const tag = (label, on) => `<span class="perm-tag ${on ? "on" : "off"}">${label}</span>`;
     return `
     <tr>
-      <td><span class="proj-no">${esc(u.username)}</span>${isSelf ? ' <span class="badge badge-blue">you</span>' : ''}${(!u.id && db) ? ' <span class="badge badge-amber">local only</span>' : ''}</td>
+      <td><span class="proj-no">${esc(u.username)}</span>${isSelf ? ' <span class="badge badge-blue">you</span>' : ''}</td>
       <td class="proj-dept">${esc(u.displayName)}</td>
       <td>${esc(u.role || "-")}</td>
       <td class="proj-dept">${esc(u.department || "-")}</td>
@@ -2654,15 +2570,7 @@ async function handleUserFormSubmit(e) {
     }
   }
 
-  rec.username = username;
-  rec.password = pwd;
-  users.push(rec);
-  await saveUsers();
-  renderUsers();
-  closeUserModal();
-  if (db && cloudConfigured) {
-    alert("'" + username + "' is saved locally. Connect to the cloud and tap Sync now — its cloud account will be created automatically.");
-  }
+  alert("Cloud account creation requires an active Supabase connection.");
 }
 function setupUserEvents() {
   document.getElementById("addUserBtn").addEventListener("click", () => { if (isAdmin()) openUserModal(null); });
@@ -2696,8 +2604,9 @@ function setupUserEvents() {
 
 // ---- Settings view ----
 function loadSettings() {
-  const me = getSessionUser() || DEFAULT_ADMIN.username;
-  const account = findUserByUsername(me) || { username: me, password: "" };
+  const me = getSessionUser();
+  const account = findUserByUsername(me);
+  if (!account) return;
   const u = document.getElementById("setUsername");
   const p = document.getElementById("setPassword");
   if (u) u.value = account.username;
@@ -2739,7 +2648,7 @@ function setupSettingsEvents() {
     const u = document.getElementById("setUsername").value.trim();
     const p = document.getElementById("setPassword").value;
     if (!u) { alert("Username is required."); return; }
-    const me = getSessionUser() || DEFAULT_ADMIN.username;
+    const me = getSessionUser();
     const target = findUserByUsername(me);
     if (!target) { alert("Your account was not found in the Users list."); return; }
     const clash = users.find(x => x.username.toLowerCase() === u.toLowerCase() && x !== target);
@@ -2747,21 +2656,25 @@ function setupSettingsEvents() {
     const oldName = target.username;
     const emailChanged = u.toLowerCase() !== oldName.toLowerCase();
     const isCloudUser = !!(db && cloudReady && target.id);
-    if (isCloudUser) {
-      const updates = {};
-      if (p) updates.password = p;
-      if (emailChanged) updates.email = cloudEmail(u);
+    if (!isCloudUser) { alert("Your cloud profile is unavailable. Sign in again and retry."); return; }
+    const updates = {};
+    if (p) updates.password = p;
+    if (emailChanged) updates.email = cloudEmail(u);
+    if (Object.keys(updates).length) {
       const { error } = await db.auth.updateUser(updates);
-      if (!error && emailChanged) {
-        alert("Your cloud username was changed. If Supabase asks you to confirm the new email, click the link in that email once.");
-      } else if (error) {
-        alert("Cloud update failed: " + error.message + "\n(Your local login below is still updated.)");
-      }
+      if (error) { alert("Cloud update failed: " + error.message); return; }
     }
+    const { error: profileError } = await db.from("user_profiles").update({
+      username: u,
+      display_name: target.displayName || u,
+      role: target.role || "User",
+      department: target.department || "",
+      status: target.status || "Active",
+      perms: target.perms || { view: true, add: false, edit: false }
+    }).eq("id", target.id);
+    if (profileError) { alert("Cloud profile update failed: " + profileError.message); return; }
     target.username = u;
-    if (p) target.password = await hashPassword(p);
-    await saveUsers();
-    renderUsers();
+    await pullCloudUsers();
     if (getSessionUser() === oldName) setSessionUser(u);
     refreshProfile();
     loadSettings();
@@ -2874,12 +2787,10 @@ async function bootApp() {
     showOnlineOnlyMessage("This app is online-only. Connect to the internet and refresh the page so the dashboard can reach the Supabase cloud.");
     return;
   }
-  if (loadProjects()) {
-    projectCounter = computeProjectCounter(projects);
-  } else {
-    projects = [];
-    projectCounter = 1;
-  }
+  document.querySelector(".app").classList.remove("hidden");
+  document.getElementById("loginOverlay").classList.add("hidden");
+  projects = [];
+  projectCounter = 1;
   setupSidebarNav();
   setupEvents();
   setupUserEvents();
@@ -2924,10 +2835,6 @@ async function bootApp() {
   if (cloudConfigured && db) {
     if (await cloudConnect()) await pullCloudUsers();
     await pullCloudProjects();
-    if (cloudReady) {
-      syncProjectsToCloud();
-      repairLocalUsersToCloud();
-    }
   }
   refreshProfile();
   applyPermissions();
@@ -2947,18 +2854,33 @@ async function init() {
     return;
   }
 
-  if (!getSessionUser()) {
+  const authUser = await cloudGetAuthUser();
+  if (!authUser) {
     document.getElementById("loginOverlay").classList.remove("hidden");
     return;
   }
 
-  const sessionUser = findUserByUsername(getSessionUser());
-  if (!sessionUser || sessionUser.status !== "Active") {
+  const { data: profile, error } = await db.from("user_profiles")
+    .select("id, username, display_name, role, department, status, perms")
+    .eq("id", authUser.id).maybeSingle();
+  if (error || !profile || profile.status !== "Active") {
+    await db.auth.signOut().catch(() => {});
     document.getElementById("loginOverlay").classList.remove("hidden");
     clearSession();
     return;
   }
 
+  setSessionUser(profile.username);
+  users = [{
+    id: profile.id,
+    username: profile.username,
+    displayName: profile.display_name || profile.username,
+    role: profile.role || "User",
+    department: profile.department || "",
+    status: profile.status,
+    perms: profile.perms || { view: true, add: false, edit: false },
+    password: ""
+  }];
   await bootApp();
 }
 

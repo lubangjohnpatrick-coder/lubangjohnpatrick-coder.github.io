@@ -9,9 +9,8 @@
        throws a SyntaxError at load time, the whole file fails to
        run, and window.AACE_CLOUD is silently never set. From the
        app's point of view that looks identical to "not configured
-       yet", so cloud sync just quietly stays on "local only"
-       forever with no visible error. (This is exactly what broke
-       cloud sync before this fix.)
+      yet", so the cloud-only app cannot start and reports the
+      configuration problem visibly instead of exposing local data.
 
      If you ever need the official `@supabase/supabase-js` NPM
      package instead of the bundled `supabase-lib.js`, either:
