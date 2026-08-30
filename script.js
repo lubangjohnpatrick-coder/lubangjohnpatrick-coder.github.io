@@ -305,11 +305,26 @@ function flashSaveStatus(msg, isWarning) {
 // 2.5 AUTH, SESSION & USERS
 // ---------------------------------------------------------------------
 const SESSION_KEY = "aace_session_v1";
+const AUDIT_KEY = "aace_audit_v1";
+const AI_KEY_STORAGE = "aace_ai_key_v1";
+const AI_MODEL_STORAGE = "aace_ai_model_v3";
+const DEFAULT_AI_MODEL = "gemini-3.5-flash";
 
 let users = [];
 let editingUserId = null;
 let modalMode = "add";
 let editingId = null;
+
+function clearBrowserSavedData() {
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(AUDIT_KEY);
+    localStorage.removeItem(AI_KEY_STORAGE);
+    localStorage.removeItem(AI_MODEL_STORAGE);
+  } catch (e) {
+    // Browser storage is intentionally ignored; all app state comes from Supabase.
+  }
+}
 
 function loadUsers() {
   users = [];
@@ -529,6 +544,83 @@ async function cloudProvisionProfile(authUser, username) {
   }
 }
 
+async function ensureAuthUserForLocalUser(localUser) {
+  if (!db || !localUser || !localUser.username || !localUser.password || isHashedPassword(localUser.password)) return null;
+  const email = cloudEmail(localUser.username);
+  const password = String(localUser.password);
+
+  try {
+    const signIn = await db.auth.signInWithPassword({ email, password });
+    if (!signIn.error && signIn.data && signIn.data.user) return signIn.data.user;
+  } catch (e) { /* fall through to sign-up */ }
+
+  try {
+    const signUp = await db.auth.signUp({ email, password });
+    if (!signUp.error && signUp.data && signUp.data.user) return signUp.data.user;
+    const message = signUp && signUp.error && signUp.error.message ? signUp.error.message : "";
+    if (/already_?registered|already exists|registered/i.test(message)) {
+      const retry = await db.auth.signInWithPassword({ email, password });
+      if (!retry.error && retry.data && retry.data.user) return retry.data.user;
+    }
+  } catch (e) { /* no auth account was created */ }
+
+  return null;
+}
+
+async function repairAllCloudUsers() {
+  if (!db || !cloudConfigured || !cloudReady) return { repaired: [], blocked: [] };
+  const repaired = [];
+  const blocked = [];
+  const session = (await db.auth.getSession()).data.session;
+
+  try {
+    for (const localUser of users.slice()) {
+      if (!localUser || !localUser.username) continue;
+      if (!localUser.password || isHashedPassword(localUser.password)) continue;
+
+      try {
+        let authUser = null;
+        if (!localUser.id) {
+          const { data: existingProfile } = await db.from("user_profiles").select("id").eq("username", localUser.username).maybeSingle();
+          if (existingProfile && existingProfile.id) {
+            localUser.id = existingProfile.id;
+          }
+        }
+
+        if (!localUser.id) {
+          authUser = await ensureAuthUserForLocalUser(localUser);
+          if (!authUser) { blocked.push(localUser.username); continue; }
+          localUser.id = authUser.id;
+        }
+
+        const { data: profile, error: profileError } = await db.from("user_profiles").select("id").eq("id", localUser.id).maybeSingle();
+        if (!profile || profileError) {
+          if (localUser.id) {
+            await cloudProvisionProfile({ id: localUser.id }, localUser.username).catch(() => {});
+          }
+        }
+
+        await ensureCloudProfileRecord(localUser);
+        repaired.push(localUser.username);
+      } catch (e) {
+        blocked.push(localUser.username);
+      }
+    }
+  } finally {
+    if (session) {
+      await db.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token }).catch(() => {});
+    }
+  }
+
+  if (repaired.length) {
+    flashSaveStatus("Cloud account repair complete: " + repaired.join(", ") + (blocked.length ? " — still blocked: " + blocked.join(", ") : "") + ".", !!blocked.length);
+  } else if (blocked.length) {
+    flashSaveStatus("Repair blocked for: " + blocked.join(", ") + ". Create the missing Supabase Auth users or reset their passwords in Authentication > Users.", true);
+  }
+
+  return { repaired, blocked };
+}
+
 async function ensureCloudProfileRecord(u) {
   if (!db || !u || !u.username) return;
   try {
@@ -556,44 +648,7 @@ async function ensureCloudProfileRecord(u) {
 // only users (sign-up + profile). Runs on reconnect / Sync now.
 function repairLocalUsersToCloud() {
   if (!db || !cloudReady || !isAdmin()) return;
-  const before = (db.auth.getSession && (async () => (await db.auth.getSession()).data.session)()) || Promise.resolve(null);
-  repairLoop();
-  async function repairLoop() {
-    const sess = await before;
-    const fixed = [], blocked = [];
-    for (const lk of users.slice()) {
-      if (!lk || !lk.username) continue;
-      if (!lk.password || isHashedPassword(lk.password)) continue;
-      try {
-        if (!lk.id) {
-          const email = cloudEmail(lk.username);
-          const { data: prof } = await db.from("user_profiles").select("id").eq("username", lk.username).maybeSingle();
-          if (prof) { lk.id = prof.id; }
-          else {
-            let su = await db.auth.signInWithPassword({ email, password: lk.password });
-            if (su.error || !(su.data && su.data.user)) {
-              su = await db.auth.signUp({ email, password: lk.password });
-            }
-            if (sess) await db.auth.setSession({ access_token: sess.access_token, refresh_token: sess.refresh_token }).catch(() => { });
-            if (su.error || !(su.data && su.data.user)) { blocked.push(lk.username); continue; }
-            lk.id = su.data.user.id;
-          }
-        }
-        lk.role = lk.role || "User";
-        lk.status = lk.status || "Active";
-        await ensureCloudProfileRecord(lk);
-        fixed.push(lk.username);
-      } catch (e2) { blocked.push(lk.username); }
-    }
-    if (sess) await db.auth.setSession({ access_token: sess.access_token, refresh_token: sess.refresh_token }).catch(() => { });
-    saveUsers();
-    renderUsers();
-    if (fixed.length) {
-      flashSaveStatus("Cloud accounts ready: " + fixed.join(", ") + (blocked.length ? " — fix needed for: " + blocked.join(", ") : "") + ".", !!blocked.length);
-    } else if (blocked.length) {
-      flashSaveStatus("Can't bind: " + blocked.join(", ") + ". Option 1: in Users, re-add each with its ORIGINAL password. Option 2: delete it in Supabase > Authentication > Users, then re-add.", true);
-    }
-  }
+  repairAllCloudUsers();
 }
 
 // Returns true when this username/password has a working cloud session.
@@ -688,10 +743,6 @@ function startCloudSyncTimer() {
 // code, and never uploaded to GitHub. AI only runs when the user clicks
 // a "Generate" button; nothing is sent automatically.
 // ---------------------------------------------------------------------
-const AI_KEY_STORAGE = "aace_ai_key_v1";
-const AI_MODEL_STORAGE = "aace_ai_model_v3";
-const DEFAULT_AI_MODEL = "gemini-3.5-flash";
-
 function getAIKey() { try { return localStorage.getItem(AI_KEY_STORAGE) || ""; } catch (e) { return ""; } }
 function getAIModel() { try { return localStorage.getItem(AI_MODEL_STORAGE) || DEFAULT_AI_MODEL; } catch (e) { return DEFAULT_AI_MODEL; } }
 
@@ -969,18 +1020,14 @@ function setupTodoEvents() {
 // Admins/editors can also add entries manually and delete any entry,
 // so history for projects that were moving before can be backfilled.
 // ----------------------------------------------------------------
-const AUDIT_KEY = "aace_audit_v1";
 let auditLog = [];
 
 function loadAudit() {
-  try {
-    const raw = localStorage.getItem(AUDIT_KEY);
-    auditLog = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(auditLog)) auditLog = [];
-  } catch (e) { auditLog = []; }
+  // Cloud-only mode: the app no longer trusts browser cache for project history.
+  auditLog = [];
 }
 function saveAudit() {
-  try { localStorage.setItem(AUDIT_KEY, JSON.stringify(auditLog)); } catch (e) { /* ignore */ }
+  // Audit data is intentionally not persisted in browser storage.
 }
 function addAudit(projectId, text, source) {
   auditLog.unshift({
@@ -2326,7 +2373,11 @@ async function doSignIn(u, p, err) {
   try {
     const { data, error } = await db.auth.signInWithPassword({ email: cloudEmail(u), password: p });
     if (error || !data || !data.user) {
-      if (err) err.textContent = "Unable to sign in. Check the username, password, and cloud connectivity.";
+      const hasProfile = await db.from("user_profiles").select("id, username, status").eq("username", u.trim()).maybeSingle();
+      const profileExists = hasProfile && !hasProfile.error && hasProfile.data;
+      if (err) err.textContent = profileExists
+        ? "This account exists in the dashboard profile list but not in Supabase Auth. Use Repair Cloud Accounts or recreate the Auth user in Supabase, then try again."
+        : "Unable to sign in. Check the username, password, and cloud connectivity.";
       return;
     }
 
@@ -2830,10 +2881,11 @@ async function bootApp() {
   if (syncBtn) syncBtn.addEventListener("click", () => {
     if (!db || !cloudConfigured) { flashSaveStatus("Cloud is not set up on this device yet.", true); return; }
     syncProjectsToCloud();
-    repairLocalUsersToCloud();
+    if (isAdmin()) repairLocalUsersToCloud();
   });
   if (cloudConfigured && db) {
     if (await cloudConnect()) await pullCloudUsers();
+    if (isAdmin()) await repairAllCloudUsers();
     await pullCloudProjects();
   }
   refreshProfile();
@@ -2845,6 +2897,7 @@ async function bootApp() {
 }
 
 async function init() {
+  clearBrowserSavedData();
   initCloud();
   loadUsers();
   setupLogin();
