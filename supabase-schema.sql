@@ -11,13 +11,14 @@
 --    with industry-standard password hashing on the server.
 create table if not exists public.user_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  username text not null unique,
-  display_name text,
-  role text not null default 'User',
-  department text,
-  status text not null default 'Active',
-  perms jsonb not null default '{"view":true,"add":false,"edit":false}',
-  created_at timestamptz not null default now()
+  username text not null unique check (char_length(trim(username)) between 3 and 50),
+  display_name text not null default '',
+  role text not null default 'User' check (lower(role) in ('user', 'administrator')),
+  department text default '',
+  status text not null default 'Active' check (lower(status) in ('active', 'inactive')),
+  perms jsonb not null default '{"view":true,"add":false,"edit":false}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 -- 2) Shared projects (one row per project, stored as JSON).
@@ -30,21 +31,51 @@ create table if not exists public.projects (
 alter table public.projects enable row level security;
 alter table public.user_profiles enable row level security;
 
--- Helper: is the signed-in user an app Administrator?
+-- Helper: is the signed-in user an active app Administrator?
 create or replace function public.is_cloud_admin()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
   select exists (
-    select 1 from public.user_profiles
-    where id = auth.uid() and lower(role) = 'administrator'
+    select 1
+    from public.user_profiles up
+    where up.id = auth.uid()
+      and lower(up.role) = 'administrator'
+      and lower(up.status) = 'active'
   )
 $$;
 
--- Helper: is this the very first account ever? (lets the first
--- user bootstrap as Administrator)
-create or replace function public.is_first_user()
-returns boolean language sql stable security definer set search_path = public as $$
-  select not exists (select 1 from public.user_profiles)
+-- Helper: user may manage their own profile or an admin may manage any profile.
+create or replace function public.is_self_or_admin(p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid() = p_user_id or public.is_cloud_admin();
 $$;
+
+create or replace function public.touch_user_profile_updated_at()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_user_profile_updated_at on public.user_profiles;
+create trigger trg_user_profile_updated_at
+before update on public.user_profiles
+for each row
+execute function public.touch_user_profile_updated_at();
 
 -- --- user_profiles rules -------------------------------------------------
 -- Everyone can read only their own row; administrators read everyone.
@@ -52,18 +83,25 @@ drop policy if exists "user_profiles_select" on public.user_profiles;
 create policy "user_profiles_select" on public.user_profiles
   for select to authenticated using (id = auth.uid() or public.is_cloud_admin());
 
--- Only administrators (or the very first account) can create profiles,
--- OR a user may create their OWN profile row on first sign-in (id = auth.uid()).
--- A user can never grant themselves Administrator: role comes from the app,
--- which only assigns Administrator to the first account or an existing local admin.
+-- A user may create their own profile row; admins may create any profile.
+-- There is no first-user fallback or self-promotion path.
 drop policy if exists "user_profiles_insert" on public.user_profiles;
 create policy "user_profiles_insert" on public.user_profiles
-  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user() or id = auth.uid());
+  for insert to authenticated with check (id = auth.uid() or public.is_cloud_admin());
 
--- Only administrators can edit or delete profiles.
+-- Users may update only their own profile; admins update any profile.
 drop policy if exists "user_profiles_update" on public.user_profiles;
 create policy "user_profiles_update" on public.user_profiles
-  for update to authenticated using (public.is_cloud_admin()) with check (public.is_cloud_admin());
+  for update to authenticated
+  using (public.is_self_or_admin(id))
+  with check (
+    (
+      id = auth.uid()
+      and role = (select role from public.user_profiles where id = auth.uid())
+      and status = (select status from public.user_profiles where id = auth.uid())
+    )
+    or public.is_cloud_admin()
+  );
 
 drop policy if exists "user_profiles_delete" on public.user_profiles;
 create policy "user_profiles_delete" on public.user_profiles
@@ -89,9 +127,7 @@ create policy "projects_delete" on public.projects
   for delete to authenticated using (true);
 
 -- --- permissions ----------------------------------------------------------
-grant execute on function public.is_cloud_admin to authenticated;
-grant execute on function public.is_first_user to authenticated;
+grant execute on function public.is_cloud_admin() to authenticated;
+grant execute on function public.is_self_or_admin(uuid) to authenticated;
 
--- Also disable the anon role writing to these tables by default is
--- handled by RLS: every policy above targets "authenticated" (signed in)
--- users only, so anonymous visitors cannot read or write anything.
+-- Anonymous access remains blocked because every policy targets authenticated users only.

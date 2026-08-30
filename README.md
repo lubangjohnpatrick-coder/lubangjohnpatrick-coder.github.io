@@ -1,30 +1,31 @@
 # AACE Project Dashboard
 
-Offline-first CAPEX (Capital Expenditure) project dashboard for **Purefoods Hormel Plant 3** using AACE International cost-estimating practice. Tracks the asset-acquisition lifecycle from creation through approval and procurement, with AI-assisted drafting and optional cloud sync via Supabase.
+Online-only CAPEX (Capital Expenditure) project dashboard for **Purefoods Hormel Plant 3** using AACE International cost-estimating practice. The app requires a live Supabase cloud connection for login, data access, and project synchronization.
 
-- Static app: no build step, no install. Open `index.html` and it runs.
-- Works 100% offline in the browser. Cloud sync and AI are optional add-ons.
-- Seed data (8 projects, AACE-2026-009 through 016) loads on first run so the app is usable immediately; once you sign in, the Supabase project list becomes the source of truth.
+- Static app: no build step, no install. Open `index.html` and it runs when Supabase is configured.
+- Login is cloud-based only. There is no local/offline account fallback.
+- The app starts empty until the Supabase project is connected and the user signs in.
 
 ## Features
 
-- **Executive dashboard** — KPI cards, CAPEX by department, portfolio status donut, management attention, largest allocations, and an **AI Status Update** (Generate / Copy / Save as PDF) written from live project statuses
-- **AACE Creation toolkit** — per-project 5-document checklist (Justification Support, Scope of Work, etc.), AI drafts in the company house format from your sample templates
+- **Executive dashboard** — KPI cards, CAPEX by department, portfolio status donut, management attention, largest allocations, and an **AI status update** generated from live project data
+- **AACE Creation toolkit** — per-project checklist for Justification Support, Scope of Work, and related documentation
 - **Activity Trail** — audit log of creates, edits, and status changes
 - **Project register** — AACE IDs, department, budget, PIC, completion %, workflow stage, approval dates
-- **Role-based permissions** — Administrator / Editor / Viewer (viewing is open, editing is permission-gated)
-- **Optional cloud sync** — shared projects and accounts across devices via Supabase with Row-Level Security
-- **Optional AI assistant** — Google Gemini summaries, notes, and drafting (key stored only in that browser)
+- **Role-based permissions** — administrators and user profiles are managed in the cloud-backed Users area
+- **Cloud sync** — shared projects and user data are stored and accessed through Supabase
+- **AI assistant** — Gemini-based summaries, notes, and drafting, using a key stored only in the browser
 
-## Run it locally
+## Run it
 
-Just open `index.html` in any browser. Everything persists in browser storage.
+1. Open the project in a browser.
+2. Make sure the Supabase project is configured in `supabase-config.js`.
+3. Sign in using the Supabase cloud account created for that project.
+4. The dashboard loads only after a valid cloud session is available.
 
-Optional: in **Settings → AI Assistant**, add your Gemini API key (saved only in that browser's localStorage — never in code, never uploaded).
+Optional: in **Settings → AI Assistant**, add your Gemini API key. The key is saved only in the browser's localStorage and is never committed to the repo.
 
 ## Deploy to GitHub (GitHub Pages)
-
-Recommended: make the repository **private** — the seed and future data are company CAPEX information.
 
 1. Create a repository.
 2. Upload these files to the repo root:
@@ -35,55 +36,49 @@ Recommended: make the repository **private** — the seed and future data are co
    - `supabase-config.js`
    - `supabase-schema.sql`
    - `aace_logo.png`
-3. Open the repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / root. You can also *Preview* under "Actions" to confirm the build.
-4. The app will be served at `https://<your-user>.github.io/<repo>/`.
+3. Open the repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / root.
+4. The app is served at `https://<your-user>.github.io/<repo>/`.
 
-The Supabase client is bundled locally (`supabase-lib.js`), so the app needs no external CDN — it works offline except for the actual cloud/AI network calls.
+The Supabase client is bundled locally in `supabase-lib.js`, and the app uses it in classic script mode.
 
 ## Set up Supabase (once)
 
-1. Go to [supabase.com](https://supabase.com) → **Start your project** (free tier is fine). Name it e.g. `aace-dashboard`, choose a nearby region, and save the database password.
-2. In your project: **SQL Editor → New query** → paste the entire contents of `supabase-schema.sql` → **Run**. This creates the tables and the Row-Level Security rules.
-3. **Settings → API**: copy the **Project URL** and the **anon (publishable) key** into `supabase-config.js` (`url` and `anonKey` fields).
+1. Go to [supabase.com](https://supabase.com) → **Start your project**.
+2. In the project: **SQL Editor → New query** → paste the entire contents of `supabase-schema.sql` → **Run**.
+3. **Settings → API**: copy the **Project URL** and the **anon (publishable) key** into `supabase-config.js`.
 4. **Authentication → Providers → Email**: set **Confirm email = OFF** so new accounts can sign in immediately.
-5. In the app: sign in with a local account (or create one), then turn on the cloud toggle. The first account to sync is automatically provisioned as **Administrator**.
+5. Create the Supabase users and sign in through the app. The dashboard performs all login checks through the cloud.
 
 ## Security notes
 
-- The anon key is a **publishable** key and is meant to be committed. Your data is protected by the Row-Level Security rules in `supabase-schema.sql`: only signed-in users can read or write projects, and profiles are restricted to their owner or administrators.
-- **Never** commit the `service_role` secret key — it exists only in the Supabase dashboard.
-- The Gemini API key lives only in your browser's localStorage; it is never stored in the repo.
-- Because RLS grants access to any signed-in account, if the repo is public, change the seed user passwords after the first cloud sign-in.
+- The anon key is a **publishable** key and is meant to be committed. Access is still limited by the Row-Level Security policies in `supabase-schema.sql`.
+- **Never** commit the `service_role` secret key — it belongs only in the Supabase dashboard server-side environment.
+- The Gemini API key is stored only in the browser's localStorage and is never saved in the repo.
+- All project and user access is expected to go through the Supabase cloud, not the browser's local storage.
 
 ## Troubleshooting
 
-**Cloud status stuck on "local only" even though `supabase-config.js` has the right URL/key.**
-This almost always means `supabase-config.js` failed to *parse*, not that it's misconfigured.
-It's loaded as a plain classic `<script>` tag (no `type="module"`), so it must **never** contain
-`import` / `export` statements — those throw a `SyntaxError` at load time, the whole file silently
-fails to run, and `window.AACE_CLOUD` never gets set. Open DevTools → Console: a red error pointing
-at `supabase-config.js`, or a `[AACE Cloud]` warning explaining exactly what's missing, confirms it.
+**The app says it is online-only and won’t load.**
+Check that `supabase-config.js` is present and valid. It must be loaded as a classic script with no `import` or `export` statements. If it fails to parse, `window.AACE_CLOUD` is never set and the app will refuse to continue.
 
-**Logo (or any asset) shows as a broken image after deploying.**
-Check the exact filename in `index.html` against what's actually in the repo — filenames with
-spaces are fragile through git/GitHub Pages URL-encoding. This project intentionally uses
-`aace_logo.png` (underscore, no space) everywhere for that reason.
+**Cloud sign-in fails.**
+Confirm:
+- the URL and anon key match the live Supabase project,
+- Email authentication is enabled,
+- the username matches the cloud email mapping used by the app,
+- the user exists in Supabase Auth and has a valid password.
 
-**"Your cloud account is active but has no profile yet."**
-An administrator needs to link it: **Users → Add user** with that same username/password → **Sync now**.
-
-**A user's password works locally but the shared cloud rejects it.**
-The cloud account (Supabase Auth) has an older password than the local one. Re-add the user in
-**Users**, or delete their row in **Supabase → Authentication → Users** and re-add them in-app.
+**Logo or asset broken after deployment.**
+Use exact filenames and avoid spaces in the asset names. This project uses `aace_logo.png` intentionally.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
 | `index.html` | App structure and views |
-| `script.js` | All logic — data, permissions, AI, cloud sync, audit trail |
+| `script.js` | All app logic — login, permissions, data flow, AI, cloud sync |
 | `style.css` | Theme and design system |
-| `supabase-lib.js` | Bundled Supabase JS client (no external CDN needed) |
+| `supabase-lib.js` | Bundled Supabase browser client |
 | `supabase-config.js` | Cloud connection settings (URL + anon key) |
-| `supabase-schema.sql` | Supabase tables + Row-Level Security (run once) |
+| `supabase-schema.sql` | Supabase tables and Row-Level Security rules |
 | `aace_logo.png` | App logo |

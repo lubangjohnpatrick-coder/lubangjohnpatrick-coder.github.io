@@ -236,6 +236,10 @@ function timeNow() {
 }
 
 function saveProjects() {
+  if (!db || !cloudReady) {
+    flashSaveStatus("Online mode only: cloud sync is required. Please reconnect to the internet and refresh the page.", true);
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
   } catch (e) {
@@ -1719,10 +1723,24 @@ function inDays(n) {
 }
 
 function seedProjects() {
-  // A brand-new device starts empty; it fills from the shared cloud or from
-  // the first project added / imported. No example/placeholder data is loaded.
+  // Online-only mode: no seed demo projects are loaded. The app starts empty
+  // until the shared cloud is reachable and the user creates project records.
   projects = [];
   projectCounter = 1;
+}
+
+function showOnlineOnlyMessage(msg) {
+  const overlay = document.getElementById("loginOverlay");
+  const form = document.getElementById("loginForm");
+  const err = document.getElementById("loginError");
+  const app = document.querySelector(".app");
+  if (overlay) overlay.classList.remove("hidden");
+  if (form) form.style.display = "none";
+  if (app) app.style.display = "none";
+  if (err) {
+    err.style.display = "block";
+    err.innerHTML = msg;
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -2396,146 +2414,51 @@ function setupSidebarNav() {
 
 // ---- Login / logout / profile ----
 async function doSignIn(u, p, err) {
-  if (!u || !p) { if (err) err.textContent = "Please enter both username and password."; return; }
-  if (users.length === 0) {
-    // No accounts exist on this device yet — there is nothing to sign in to.
-    // The first person must create the Administrator via the setup panel.
-    updateLoginMode();
-    const fr = document.getElementById("firstRunBox");
-    if (fr) fr.scrollIntoView({ block: "center" });
-    if (err) err.textContent = "";
+  if (!u || !p) {
+    if (err) err.textContent = "Please enter both username and password.";
     return;
   }
-  const localUser = findUserByUsername(u);
-  const localOk = await (localUser ? verifyAndMigrateUserPassword(localUser, p) : false);
-  if (cloudConfigured && db) {
-    const cloudOk = await ensureCloudSession(u, p, localOk);
-    if (cloudOk) {
-      await pullCloudUsers();
-      let again = findUserByUsername(u);
-      if (!(again && again.status === "Active")) {
-        const au = await cloudGetAuthUser();
-        if (au) await cloudProvisionProfile(au, u);
-        await pullCloudUsers();
-        again = findUserByUsername(u);
-      }
-      if (again && again.status === "Active") { setSessionUser(u); location.reload(); return; }
-      if (localOk && localUser && localUser.status === "Active") {
-        setSessionUser(u);
-        location.reload();
-        return;
-      }
-      await db.auth.signOut().catch(() => {});
-      const FIX_SQL = 'drop policy if exists "user_profiles_insert" on public.user_profiles;\ncreate policy "user_profiles_insert" on public.user_profiles\n  for insert to authenticated with check (public.is_cloud_admin() or public.is_first_user() or id = auth.uid());';
-      const knownLocally = !!(localUser && localUser.password);
-      err.innerHTML = (knownLocally
-        ? "Your cloud account is active but has no profile yet. Your account is known on this device, so it will open as soon as an administrator links it. As administrator: Users → Add user → type this username with a password → Save → tap Sync now. Then sign in again."
-        : "This browser does not have '" + u + "' in its Users list yet — that is why it cannot open here. Sign in as an administrator, go to Users → Add user → type '" + u + "' with a password → Save. Then '" + u + "' can sign in.") +
-        "<br><br>Optional permanent rule (lets users register themselves) — run in your Supabase SQL editor (<a href=\"https://supabase.com/dashboard/project/fmoxsqgnvfyszxcsypgb/sql/new\" target=\"_blank\" rel=\"noopener\">open SQL editor</a>, paste, Run):<br><textarea id=\"fixSql\" rows=\"4\" readonly style=\"width:100%;font-family:monospace;font-size:12px;margin-top:6px\">" +
-        FIX_SQL +
-        "</textarea><br><button type=\"button\" class=\"btn\" id=\"copyFixSqlBtn\">Copy SQL</button>";
-      const cbtn = document.getElementById("copyFixSqlBtn");
-      if (cbtn) cbtn.addEventListener("click", () => {
-        const ta = document.getElementById("fixSql");
-        ta.select(); ta.setSelectionRange(0, 99999);
-        if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(() => flashSaveStatus("SQL copied — paste it in the Supabase SQL editor and Run.")).catch(() => {});
-        else document.execCommand("copy");
-      });
+  if (!cloudConfigured || !db) {
+    if (err) err.textContent = "This app runs in online mode only. Configure the Supabase cloud connection and refresh the page.";
+    return;
+  }
+
+  try {
+    const { data, error } = await db.auth.signInWithPassword({ email: cloudEmail(u), password: p });
+    if (error || !data || !data.user) {
+      if (err) err.textContent = "Unable to sign in. Check the username, password, and cloud connectivity.";
       return;
     }
-  }
-  if (localOk && localUser && localUser.status === "Active") {
+
+    await cloudProvisionProfile(data.user, u).catch(() => {});
+    await pullCloudUsers();
     setSessionUser(u);
     location.reload();
-    return;
+  } catch (e) {
+    if (err) err.textContent = "Cloud sign-in failed. Please check your internet connection and try again.";
   }
-  if (err) {
-    if (localUser && !localOk) {
-      err.innerHTML = "That password doesn't match the account <b>" + esc(u) + "</b> on this device — and the shared cloud rejected it too (its cloud account usually holds an older password from an earlier setup).<br><br>Fix it in one minute: click <b>Users</b>, select <b>" + esc(u) + "</b>, and re-add it; or delete the stale cloud account in <b>Supabase &gt; Authentication &gt; Users</b> (delete the row for <i>" + esc(cloudEmail(u)) + "</i>), then <b>Users &gt; Add user</b> re-creates it with the password you choose. Tap <b>Sync now</b> afterwards.";
-    } else if (!localUser) {
-      err.innerHTML = "No account called <b>" + esc(u) + "</b> on this device, and the shared cloud rejected that password.<br><br>Sign in as an administrator, then <b>Users &gt; Add user</b> and create <b>" + esc(u) + "</b> with a password. After that it can sign in here.";
-    } else {
-      err.textContent = "Could not verify these credentials. Is this device online and is the shared cloud reachable? Please try again.";
-    }
-  }
-}
-function renderQuickSwitch() {
-  const host = document.getElementById("quickSwitch");
-  if (!host) return;
-  const names = Array.from(new Set(users.map(x => x && x.username).filter(Boolean)))
-    .filter(n => {
-      if (n === getSessionUser()) return false;
-      const lu = users.find(x => x && x.username === n);
-      // Never one-tap an Administrator (or the old hardcoded admin) open —
-      // those accounts always require the password to be typed.
-      if (lu && (lu.role === "Administrator" || n.toLowerCase() === DEFAULT_ADMIN.username.toLowerCase())) return false;
-      return lu && lu.password && !isHashedPassword(lu.password);
-    }).slice(0, 6);
-  if (!names.length) { host.innerHTML = ""; return; }
-  host.innerHTML = '<div class="login-quick-title">This browser knows these users — tap to open</div>' +
-    names.map(n =>
-      '<button type="button" class="btn login-quick-btn" data-qs="' + esc(n) + '">Open ' + esc(n) + '</button>'
-    ).join("");
-  host.querySelectorAll("[data-qs]").forEach(b => {
-    b.addEventListener("click", () => {
-      const n = b.dataset.qs;
-      const lu = users.find(x => x && x.username === n);
-      if (!lu || !lu.password) { flashSaveStatus("No saved password for " + n + " — type it in the form instead.", true); return; }
-      doSignIn(n, lu.password, document.getElementById("loginError"));
-    });
-  });
-}
-
-// A brand-new device has no accounts yet: show the first-run setup that
-// creates the Administrator instead of the normal sign-in form.
-function updateLoginMode() {
-  const firstRun = users.length === 0;
-  const form = document.getElementById("loginForm");
-  const qs = document.getElementById("quickSwitch");
-  const fr = document.getElementById("firstRunBox");
-  if (!form || !fr) return;
-  form.style.display = firstRun ? "none" : "";
-  if (qs) qs.style.display = firstRun ? "none" : "";
-  fr.classList.toggle("hidden", !firstRun);
 }
 
 function setupLogin() {
-  document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  const form = document.getElementById("loginForm");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const u = document.getElementById("loginUser").value.trim();
     const p = document.getElementById("loginPass").value;
     const err = document.getElementById("loginError");
     doSignIn(u, p, err);
   });
-  document.getElementById("firstRunForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const err = document.getElementById("frError");
-    const name = document.getElementById("frUsername").value.trim();
-    const pwd = document.getElementById("frPassword").value;
-    const pwd2 = document.getElementById("frPassword2").value;
-    if (!name) { err.textContent = "Pick a username for the administrator."; return; }
-    if (pwd.length < 4) { err.textContent = "Use a password with at least 4 characters."; return; }
-    if (pwd !== pwd2) { err.textContent = "The two passwords do not match."; return; }
-    users.unshift({
-      username: name,
-      password: pwd,
-      displayName: name,
-      role: "Administrator",
-      department: "AACE",
-      status: "Active",
-      perms: { view: true, add: true, edit: true }
+
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      clearSession();
+      if (db) await db.auth.signOut().catch(() => {});
+      location.reload();
     });
-    saveUsers();
-    setSessionUser(name);
-    location.reload();
-  });
-  updateLoginMode();
-  renderQuickSwitch();
-  document.getElementById("logoutBtn").addEventListener("click", async () => {
-    clearSession();
-    if (db) await db.auth.signOut().catch(() => {});
-    location.reload();
-  });
+  }
 }
 
 function refreshProfile() {
@@ -2943,11 +2866,19 @@ function setupEvents() {
 // 13. INIT
 // ---------------------------------------------------------------------
 async function bootApp() {
-  if (!loadProjects() || projects.length === 0) {
-    seedProjects();
-  } else {
-    // keep counter ahead of existing IDs
+  if (!cloudConfigured || !db) {
+    showOnlineOnlyMessage("This app runs in online mode only. Configure the Supabase connection in supabase-config.js and refresh the page.");
+    return;
+  }
+  if (!(await cloudConnect())) {
+    showOnlineOnlyMessage("This app is online-only. Connect to the internet and refresh the page so the dashboard can reach the Supabase cloud.");
+    return;
+  }
+  if (loadProjects()) {
     projectCounter = computeProjectCounter(projects);
+  } else {
+    projects = [];
+    projectCounter = 1;
   }
   setupSidebarNav();
   setupEvents();
@@ -3010,12 +2941,24 @@ async function init() {
   initCloud();
   loadUsers();
   setupLogin();
-  // Migrate the old "ok"-style session marker to the default admin.
-  if (getSessionUser() === "ok") setSessionUser(DEFAULT_ADMIN.username);
-  if (!getSessionUser() || !findUserByUsername(getSessionUser())) {
+
+  if (!cloudConfigured || !db) {
+    showOnlineOnlyMessage("This app runs in online mode only. Configure the Supabase connection in supabase-config.js and refresh the page.");
+    return;
+  }
+
+  if (!getSessionUser()) {
     document.getElementById("loginOverlay").classList.remove("hidden");
     return;
   }
+
+  const sessionUser = findUserByUsername(getSessionUser());
+  if (!sessionUser || sessionUser.status !== "Active") {
+    document.getElementById("loginOverlay").classList.remove("hidden");
+    clearSession();
+    return;
+  }
+
   await bootApp();
 }
 

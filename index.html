@@ -24,53 +24,24 @@
     </div>
     <div class="login-rule"></div>
 
-    <!-- LOGIN FORM -->
+    <!-- LOGIN FORM (Cloud Accounts Only) -->
     <form id="loginForm" autocomplete="off">
       <div class="form-row">
         <label for="loginUser">Username</label>
-        <input type="text" id="loginUser" name="username" 
+        <input type="text" id="loginUser" name="username"
                autocomplete="new-username" placeholder="Enter your username" required>
       </div>
       <div class="form-row">
         <label for="loginPass">Password</label>
-        <input type="password" id="loginPass" name="password" 
+        <input type="password" id="loginPass" name="password"
                autocomplete="new-password" placeholder="Enter your password" required>
       </div>
       <div id="loginError" class="login-error"></div>
       <button type="submit" class="btn btn-primary login-btn">Sign In</button>
-      <div class="login-hint">Any account created in the Users page can sign in here.</div>
+      <div class="login-hint">Sign in with your cloud account credentials.</div>
     </form>
-
-    <!-- FIRST RUN (ADMIN CREATION) -->
-    <div id="firstRunBox" class="login-quick hidden">
-      <div class="login-quick-title">
-        No accounts exist on this device yet — create the administrator account to begin.
-      </div>
-      <form id="firstRunForm" autocomplete="off">
-        <div class="form-row">
-          <label for="frUsername">Admin username</label>
-          <input type="text" id="frUsername" name="admin_username" 
-                 autocomplete="new-username" required>
-        </div>
-        <div class="form-row">
-          <label for="frPassword">Admin password</label>
-          <input type="password" id="frPassword" name="admin_password" 
-                 autocomplete="new-password" required>
-        </div>
-        <div class="form-row">
-          <label for="frPassword2">Repeat password</label>
-          <input type="password" id="frPassword2" name="admin_password_repeat" 
-                 autocomplete="new-password" required>
-        </div>
-        <div id="frError" class="login-error"></div>
-        <button type="submit" class="btn btn-primary login-btn">
-          Create Administrator &amp; Sign In
-        </button>
-      </form>
-    </div>
   </div>
 </div>
-
 
 <div class="scrim hidden" id="scrim"></div>
 

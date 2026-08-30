@@ -46,8 +46,8 @@ window.AACE_CLOUD = {
    1. SQL Editor → New query → paste the entire contents of
       supabase-schema.sql → Run.
       This creates the `projects` / `user_profiles` tables and
-      all Row-Level Security policies (including the helper
-      functions is_cloud_admin() and is_first_user()).
+      the Row-Level Security policies for authenticated users,
+      including the helper function is_cloud_admin().
 
    2. Authentication → Providers → Email → set "Confirm email"
       to OFF, so new accounts can sign in immediately without
@@ -57,9 +57,10 @@ window.AACE_CLOUD = {
       "anon / publishable" key above match this Supabase project.
       (Project Settings → API → Project API keys.)
 
-   4. In the app: sign in with a local account, then turn on the
-      cloud toggle. The first account to successfully sync is
-      automatically provisioned as Administrator.
+   4. In the app: sign in with a Supabase-authenticated account,
+      then use the app normally. Admin access is granted only to
+      users explicitly assigned the Administrator role in the
+      profile table.
 
    Quick self-check after setup — open the browser console and
    look for a line starting with "[AACE Cloud]". No such line
