@@ -39,6 +39,11 @@ window.AACE_CLOUD = {
   anonKey: "sb_publishable_7t0973gQ1FjqXdsjXLhrOw_toMu8dwM"
 };
 
+/* Load user-management hardening before script.js is parsed at the end of
+   index.html. document.write is intentional here because this config file is
+   parser-loaded synchronously in <head>; it preserves deterministic ordering. */
+document.write('<script src="user-management-fix.js?v=33"><\/script>');
+
 /* ============================================================
    ONE-TIME SUPABASE SETUP CHECKLIST
    ============================================================
@@ -60,6 +65,9 @@ window.AACE_CLOUD = {
       then use the app normally. Admin access is granted only to
       users explicitly assigned the Administrator role in the
       profile table.
+
+   5. For permanent Admin-side user deletion, run
+      supabase-user-management.sql once in the SQL Editor.
 
    Quick self-check after setup — open the browser console and
    look for a line starting with "[AACE Cloud]". No such line
