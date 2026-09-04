@@ -8,6 +8,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     if (typeof handleUserFormSubmit !== "function") return;
+    const originalHandleUserFormSubmit = handleUserFormSubmit;
 
     handleUserFormSubmit = async function (e) {
       e.preventDefault();
@@ -31,9 +32,7 @@
       };
 
       if (!editingUserId) {
-        // Keep the app's existing cloud-account creation flow for new users.
-        // Temporarily restore the original handler only for this invocation.
-        return originalUserSubmit(e);
+        return originalHandleUserFormSubmit(e);
       }
 
       const existing = users.find(x => x.username.toLowerCase() === editingUserId.toLowerCase());
@@ -46,17 +45,21 @@
         alert("Password changes for another cloud user require a privileged server-side Admin API. No password change was applied; the profile changes will still be saved.");
       }
 
-      const { error } = await db.from("user_profiles").update({
+      const { data, error } = await db.from("user_profiles").update({
         display_name: rec.displayName,
         role: rec.role,
         department: rec.department,
         status: rec.status,
         perms: rec.perms
-      }).eq("id", existing.id);
+      }).eq("id", existing.id).select("id").maybeSingle();
 
       if (error) {
         console.error("[AACE Users] Profile update failed", error);
         alert("Could not save this user: " + error.message);
+        return;
+      }
+      if (!data) {
+        alert("The cloud did not update this user. Your session may have expired or the account may have been removed. Refresh and try again.");
         return;
       }
 
@@ -68,22 +71,7 @@
       closeUserModal();
       if (typeof flashSaveStatus === "function") flashSaveStatus("User account updated in cloud.");
     };
-
-    // Save a reference to the original handler after function declarations from
-    // script.js are available. Because this callback runs before script.js init,
-    // the identifier above still points to the original implementation here.
-    function originalUserSubmit(e) {
-      // The original implementation is retained on a private reference below.
-      return originalHandleUserFormSubmit(e);
-    }
   }, { once: true });
-
-  // Capture the original handler after script.js has loaded but before the DOM
-  // event fires. A zero-delay task runs after the current parser task.
-  let originalHandleUserFormSubmit;
-  setTimeout(function () {
-    if (typeof handleUserFormSubmit === "function") originalHandleUserFormSubmit = handleUserFormSubmit;
-  }, 0);
 
   document.addEventListener("DOMContentLoaded", function () {
     const table = document.getElementById("usersTableBody");
