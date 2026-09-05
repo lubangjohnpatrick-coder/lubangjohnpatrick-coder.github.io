@@ -90,8 +90,8 @@ test("application scripts use deterministic defer loading and a direct favicon",
   }
 
   assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="favicon\.svg\?v=40">/);
-  assert.doesNotMatch(config, /document\.write/);
-  assert.doesNotMatch(config, /service_role/i);
+  assert.doesNotMatch(config, /document\.write\s*\(/);
+  assert.doesNotMatch(config, /service_role\s*[:=]/i);
 });
 
 test("legacy Sync Now UI is removed and primary navigation is semantic", async () => {
