@@ -1,37 +1,11 @@
 /* ============================================================
    AACE PROJECT DASHBOARD — Supabase cloud connection settings
    ============================================================
-   This file is loaded as a PLAIN, CLASSIC <script> in index.html
-   (there is no `type="module"` on that tag). That means:
+   Browser-safe values only. The publishable key is intentionally public;
+   authorization is enforced by Supabase Row-Level Security.
 
-     ⚠ DO NOT add `import` / `export` statements to this file.
-       A classic script can't parse ES module syntax — the browser
-       throws a SyntaxError at load time, the whole file fails to
-       run, and window.AACE_CLOUD is silently never set. From the
-       app's point of view that looks identical to "not configured
-      yet", so the cloud-only app cannot start and reports the
-      configuration problem visibly instead of exposing local data.
-
-     If you ever need the official `@supabase/supabase-js` NPM
-     package instead of the bundled `supabase-lib.js`, either:
-       a) keep using the UMD build (like supabase-lib.js) and a
-          classic <script> tag, or
-       b) switch BOTH <script> tags in index.html to
-          type="module" and update script.js's cloud layer to
-          `import` the client instead of reading window.supabase.
-     Don't mix the two — pick one loading style per file.
-
-   Values below are PUBLIC by design:
-     - The project URL is not sensitive.
-     - The "anon" / "publishable" key only lets a browser send
-       requests — Row-Level Security policies in
-       supabase-schema.sql decide what it's actually allowed to
-       read or write. Anonymous (signed-out) visitors are blocked
-       entirely; see the policies at the bottom of that file.
-
-   NEVER put the service_role secret key here, or anywhere in the
-   frontend — it bypasses Row-Level Security completely and must
-   only ever live inside the Supabase dashboard / server-side code.
+   NEVER put a service_role key or Gemini secret in this file. Privileged Auth
+   administration and AI calls belong in Supabase Edge Functions.
    ============================================================ */
 
 window.AACE_CLOUD = {
@@ -39,39 +13,35 @@ window.AACE_CLOUD = {
   anonKey: "sb_publishable_7t0973gQ1FjqXdsjXLhrOw_toMu8dwM"
 };
 
-/* Load hardening/enhancement scripts before script.js is parsed at the end of
-   index.html. document.write is intentional here because this config file is
-   parser-loaded synchronously in <head>; it preserves deterministic ordering. */
-document.write('<script src="user-management-fix.js?v=34"><\/script>');
-document.write('<script src="dashboard-enhancements.js?v=34"><\/script>');
+/* Migration bridge: index.html currently parser-loads this classic script from
+   <head>, while script.js is loaded later in <body>. These helpers register
+   DOMContentLoaded hooks before script.js boots. A future module-build migration
+   should replace document.write with normal defer/module imports. */
+document.write('<script src="production-hardening.js?v=40"><\/script>');
+document.write('<script src="user-management-fix.js?v=40"><\/script>');
+document.write('<script src="dashboard-enhancements.js?v=40"><\/script>');
 
 /* ============================================================
-   ONE-TIME SUPABASE SETUP CHECKLIST
+   PRODUCTION SETUP CHECKLIST
    ============================================================
-   1. SQL Editor → New query → paste the entire contents of
-      supabase-schema.sql → Run.
-      This creates the `projects` / `user_profiles` tables and
-      the Row-Level Security policies for authenticated users,
-      including the helper function is_cloud_admin().
+   1. Run supabase-production-hardening.sql in Supabase SQL Editor BEFORE
+      deploying this frontend. It closes browser-bypass permission gaps,
+      creates the immutable activity trail, and enables server project numbers.
 
-   2. Authentication → Providers → Email → set "Confirm email"
-      to OFF, so new accounts can sign in immediately without
-      clicking a confirmation link first.
+   2. Deploy the Supabase Edge Function at:
+        supabase/functions/admin-users/index.ts
+      The service-role key remains server-side and is never placed in GitHub
+      Pages. User creation/password reset/deletion uses this function.
 
-   3. Settings → API → confirm the "Project URL" and the
-      "anon / publishable" key above match this Supabase project.
-      (Project Settings → API → Project API keys.)
+   3. If server-side AI is enabled, deploy the `gemini` Edge Function and store
+      GEMINI_API_KEY only as an Edge Function secret. Do not restore browser
+      localStorage API-key handling.
 
-   4. In the app: sign in with a Supabase-authenticated account,
-      then use the app normally. Admin access is granted only to
-      users explicitly assigned the Administrator role in the
-      profile table.
+   4. In Supabase Authentication, disable public user sign-up if your deployment
+      is administrator-provisioned only. A random Auth account receives no
+      dashboard access without an active user_profiles row, but disabling public
+      sign-up further reduces attack surface.
 
-   5. For permanent Admin-side user deletion, run
-      supabase-user-management.sql once in the SQL Editor.
-
-   Quick self-check after setup — open the browser console and
-   look for a line starting with "[AACE Cloud]". No such line
-   means this file loaded and parsed correctly; a warning there
-   tells you exactly what's still missing.
+   5. Keep Email authentication enabled. Existing dashboard users must have a
+      matching Supabase Auth user and user_profiles row.
    ============================================================ */
