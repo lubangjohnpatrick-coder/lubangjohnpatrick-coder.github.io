@@ -1,25 +1,28 @@
 /* AACE user-management hardening.
- * Loaded by supabase-config.js before script.js. The DOMContentLoaded hook runs
- * after script.js has declared the app globals but before script.js boot logic
- * wires its own user handlers.
+ * Loaded before script.js; hooks run after script.js declares its globals and
+ * before the app boot handler wires the Users UI.
+ *
+ * Auth create/password/delete operations are intentionally delegated to the
+ * admin-users Supabase Edge Function. The browser never receives service-role
+ * credentials and never tries to impersonate another Auth user.
  */
 (function () {
   "use strict";
 
-  document.addEventListener("DOMContentLoaded", function () {
-    if (typeof handleUserFormSubmit !== "function") return;
-    const originalHandleUserFormSubmit = handleUserFormSubmit;
+  async function invokeAdminUsers(body) {
+    if (!db || !cloudReady) throw new Error("Cloud user service is unavailable.");
+    const { data, error } = await db.functions.invoke("admin-users", { body });
+    if (error) throw new Error(error.message || "User administration request failed.");
+    if (data && data.error) throw new Error(data.error);
+    return data || {};
+  }
 
-    handleUserFormSubmit = async function (e) {
-      e.preventDefault();
-      if (!isAdmin()) return;
-
-      const usernameEl = document.getElementById("u_username");
-      const username = usernameEl.value.trim();
-      if (!username) { alert("Username is required."); return; }
-
-      const pwd = document.getElementById("u_password").value;
-      const rec = {
+  function readUserForm() {
+    const username = document.getElementById("u_username").value.trim();
+    return {
+      username,
+      password: document.getElementById("u_password").value,
+      rec: {
         displayName: document.getElementById("u_displayName").value.trim() || username,
         role: document.getElementById("u_role").value.trim() || "User",
         department: document.getElementById("u_dept").value.trim(),
@@ -29,47 +32,86 @@
           add: document.getElementById("u_perm_add").checked,
           edit: document.getElementById("u_perm_edit").checked
         }
-      };
-
-      if (!editingUserId) {
-        return originalHandleUserFormSubmit(e);
       }
+    };
+  }
 
-      const existing = users.find(x => x.username.toLowerCase() === editingUserId.toLowerCase());
-      if (!existing) { alert("The user being edited is no longer in the current user list. Refresh and try again."); return; }
-      if (!db || !cloudReady || !existing.id) { alert("Cloud user data is unavailable. Refresh the page and try again."); return; }
+  document.addEventListener("DOMContentLoaded", function () {
+    if (typeof handleUserFormSubmit !== "function") return;
 
-      // A browser client must not attempt privileged password changes for other
-      // Supabase Auth users. Their profile fields can still be safely edited.
-      if (pwd) {
-        alert("Password changes for another cloud user require a privileged server-side Admin API. No password change was applied; the profile changes will still be saved.");
+    handleUserFormSubmit = async function (e) {
+      e.preventDefault();
+      if (!isAdmin()) return;
+
+      const { username, password, rec } = readUserForm();
+      if (!username) { alert("Username is required."); return; }
+      if (!db || !cloudReady) { alert("Cloud user data is unavailable. Refresh the page and try again."); return; }
+
+      const submit = document.querySelector("#userForm button[type='submit']");
+      if (submit) submit.disabled = true;
+
+      try {
+        if (!editingUserId) {
+          if (password.length < 8) {
+            alert("New cloud accounts require a password of at least 8 characters.");
+            return;
+          }
+
+          await invokeAdminUsers({
+            action: "create",
+            username,
+            password,
+            profile: {
+              display_name: rec.displayName,
+              role: rec.role,
+              department: rec.department,
+              status: rec.status,
+              perms: rec.perms
+            }
+          });
+
+          await pullCloudUsers();
+          renderUsers();
+          closeUserModal();
+          if (typeof flashSaveStatus === "function") flashSaveStatus("User account created securely in Supabase.");
+          return;
+        }
+
+        const existing = users.find(x => x.username.toLowerCase() === editingUserId.toLowerCase());
+        if (!existing || !existing.id) throw new Error("The cloud user could not be resolved. Refresh and try again.");
+        if (username.toLowerCase() !== existing.username.toLowerCase()) {
+          throw new Error("Username changes are disabled because the username is tied to the Auth login. Create a replacement account instead.");
+        }
+
+        const { data, error } = await db.from("user_profiles").update({
+          display_name: rec.displayName,
+          role: rec.role,
+          department: rec.department,
+          status: rec.status,
+          perms: rec.perms
+        }).eq("id", existing.id).select("id").maybeSingle();
+
+        if (error) throw error;
+        if (!data) throw new Error("The profile was not updated. Your session may have expired.");
+
+        if (password) {
+          if (password.length < 8) throw new Error("Passwords must contain at least 8 characters.");
+          await invokeAdminUsers({ action: "set_password", user_id: existing.id, password });
+        }
+
+        await pullCloudUsers();
+        renderUsers();
+        refreshProfile();
+        applyPermissions();
+        closeUserModal();
+        if (typeof flashSaveStatus === "function") flashSaveStatus("User account updated in cloud.");
+      } catch (err) {
+        console.error("[AACE Users] Save failed", err);
+        alert("Could not save this user: " + (err && err.message ? err.message : String(err)) +
+          "\n\nEnsure the admin-users Edge Function is deployed before using Auth administration.");
+      } finally {
+        if (submit) submit.disabled = false;
       }
-
-      const { data, error } = await db.from("user_profiles").update({
-        display_name: rec.displayName,
-        role: rec.role,
-        department: rec.department,
-        status: rec.status,
-        perms: rec.perms
-      }).eq("id", existing.id).select("id").maybeSingle();
-
-      if (error) {
-        console.error("[AACE Users] Profile update failed", error);
-        alert("Could not save this user: " + error.message);
-        return;
-      }
-      if (!data) {
-        alert("The cloud did not update this user. Your session may have expired or the account may have been removed. Refresh and try again.");
-        return;
-      }
-
-      Object.assign(existing, rec);
-      await pullCloudUsers();
-      renderUsers();
-      refreshProfile();
-      applyPermissions();
-      closeUserModal();
-      if (typeof flashSaveStatus === "function") flashSaveStatus("User account updated in cloud.");
     };
   }, { once: true });
 
@@ -81,7 +123,6 @@
       const button = e.target.closest("[data-udel]");
       if (!button) return;
 
-      // Intercept the legacy fire-and-forget delete handler.
       e.preventDefault();
       e.stopImmediatePropagation();
 
@@ -92,19 +133,18 @@
 
       const target = findUserByUsername(username);
       if (!target || !target.id) { alert("This cloud user could not be resolved. Refresh the page and try again."); return; }
-      if (!db || !cloudReady) { alert("Cloud user data is unavailable. Refresh the page and try again."); return; }
       if (!confirm(`Permanently delete user \"${username}\"? This removes both the dashboard profile and Supabase Auth account.`)) return;
 
       button.disabled = true;
       try {
-        const { error } = await db.rpc("admin_delete_dashboard_user", { p_user_id: target.id });
-        if (error) throw error;
+        await invokeAdminUsers({ action: "delete", user_id: target.id });
         await pullCloudUsers();
         renderUsers();
-        if (typeof flashSaveStatus === "function") flashSaveStatus("User account deleted from cloud.");
+        if (typeof flashSaveStatus === "function") flashSaveStatus("User account deleted from Supabase.");
       } catch (err) {
         console.error("[AACE Users] Delete failed", err);
-        alert("Could not delete this user: " + (err && err.message ? err.message : String(err)) + "\n\nIf this is the first deployment of the fix, run supabase-user-management.sql in the Supabase SQL Editor once.");
+        alert("Could not delete this user: " + (err && err.message ? err.message : String(err)) +
+          "\n\nEnsure the admin-users Edge Function is deployed.");
       } finally {
         button.disabled = false;
       }
