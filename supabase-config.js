@@ -39,10 +39,11 @@ window.AACE_CLOUD = {
   anonKey: "sb_publishable_7t0973gQ1FjqXdsjXLhrOw_toMu8dwM"
 };
 
-/* Load user-management hardening before script.js is parsed at the end of
+/* Load hardening/enhancement scripts before script.js is parsed at the end of
    index.html. document.write is intentional here because this config file is
    parser-loaded synchronously in <head>; it preserves deterministic ordering. */
-document.write('<script src="user-management-fix.js?v=33"><\/script>');
+document.write('<script src="user-management-fix.js?v=34"><\/script>');
+document.write('<script src="dashboard-enhancements.js?v=34"><\/script>');
 
 /* ============================================================
    ONE-TIME SUPABASE SETUP CHECKLIST
