@@ -1,7 +1,7 @@
 /* ==========================================================================
    AACE PROJECT DASHBOARD — Executive Design System
    Pillars: Finance (green) · Engineering (blue) · Management (navy) · IT (teal)
-   Offline-first progressive web dashboard. No external fonts or libraries.
+   Cloud-first project dashboard. No external fonts or libraries.
    ========================================================================== */
 
 :root {
@@ -1274,4 +1274,25 @@ body::after {
 /* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- Production accessibility hardening ---------- */
+.nav-link[type="button"] {
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+.nav-link[type="button"].active {
+  background: linear-gradient(90deg, var(--blue-600), var(--blue-700));
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .32);
+  outline-offset: 2px;
+}
+@media (hover: none) {
+  .card:hover { transform: none; }
+}
+@media (max-width: 760px) {
+  button, .nav-link { min-height: 44px; }
 }

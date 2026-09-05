@@ -4,9 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AACE Project Dashboard — Capital Expenditure Monitoring System</title>
-<link rel="stylesheet" href="style.css?v=32">
-<script src="supabase-lib.js?v=32"></script>
-<script src="supabase-config.js?v=32"></script>
+<link rel="icon" type="image/svg+xml" href="favicon.svg?v=40">
+<link rel="apple-touch-icon" href="aace_logo.png?v=40">
+<link rel="stylesheet" href="style.css?v=40">
+<script defer src="supabase-lib.js?v=40"></script>
+<script defer src="supabase-config.js?v=40"></script>
+<script defer src="production-hardening.js?v=40"></script>
+<script defer src="user-management-fix.js?v=40"></script>
+<script defer src="dashboard-enhancements.js?v=40"></script>
+<script defer src="script.js?v=40"></script>
 </head>
 <body>
 
@@ -15,7 +21,7 @@
   <div class="login-box">
     <div class="login-brand-row">
       <div class="login-mark">
-        <img src="aace_logo.png?v=32" alt="AACE logo">
+        <img src="aace_logo.png?v=40" alt="AACE logo">
       </div>
       <div>
         <div class="login-title">AACE Project Dashboard</div>
@@ -48,24 +54,24 @@
 <div class="app hidden">
 
   <!-- SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="Primary sidebar">
     <div class="sidebar-brand">
-      <div class="brand-mark"><img src="aace_logo.png?v=32" alt="AACE logo"></div>
+      <div class="brand-mark"><img src="aace_logo.png?v=40" alt="AACE logo"></div>
       <div class="brand-text">
         <div class="t1">AACE</div>
         <div class="t2">CAPITAL PROJECTS MONITORING</div>
       </div>
     </div>
-    <ul class="sidebar-nav">
-      <div class="nav-section">Operations</div>
-      <li><a class="nav-link active" data-view="dashboard"><span class="icon">&#9635;</span><span class="label">Dashboard</span></a></li>
-      <li><a class="nav-link" data-view="projects"><span class="icon">&#128193;</span><span class="label">Projects</span></a></li>
-      <li><a class="nav-link" data-view="todo"><span class="icon">&#128161;</span><span class="label">What to Do?</span></a></li>
-      <li><a class="nav-link" data-view="guide"><span class="icon">&#128214;</span><span class="label">AACE Guide</span></a></li>
+    <ul class="sidebar-nav" aria-label="Primary navigation">
+      <li class="nav-section" role="presentation">Operations</li>
+      <li><button type="button" class="nav-link active" data-view="dashboard"><span class="icon">&#9635;</span><span class="label">Dashboard</span></button></li>
+      <li><button type="button" class="nav-link" data-view="projects"><span class="icon">&#128193;</span><span class="label">Projects</span></button></li>
+      <li><button type="button" class="nav-link" data-view="todo"><span class="icon">&#128161;</span><span class="label">What to Do?</span></button></li>
+      <li><button type="button" class="nav-link" data-view="guide"><span class="icon">&#128214;</span><span class="label">AACE Guide</span></button></li>
       <li><a class="nav-link" id="documentsLink" href="https://smcsmits-my.sharepoint.com/:f:/r/personal/jlubang_sanmiguel_com_ph/Documents/AACE%20Documents?d=w7e6dcbcbc0454014867910d101d6f059&csf=1&web=1&e=JKLs14" target="_blank" rel="noopener"><span class="icon">&#128196;</span><span class="label">Documents</span></a></li>
-      <div class="nav-section">Administration</div>
-      <li><a class="nav-link" data-view="users"><span class="icon">&#128101;</span><span class="label">Users</span></a></li>
-      <li><a class="nav-link" data-view="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></a></li>
+      <li class="nav-section" role="presentation">Administration</li>
+      <li><button type="button" class="nav-link" data-view="users"><span class="icon">&#128101;</span><span class="label">Users</span></button></li>
+      <li><button type="button" class="nav-link" data-view="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></button></li>
     </ul>
     <div class="sidebar-foot">AACE Capital Projects System<br><b>v1.0</b> &middot; Supabase cloud</div>
   </aside>
@@ -75,7 +81,7 @@
 
     <header class="topbar">
       <div class="topbar-left">
-        <button class="icon-btn" id="sidebarToggle" title="Toggle sidebar">&#9776;</button>
+        <button type="button" class="icon-btn" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">&#9776;</button>
         <div>
           <h1>AACE Project Dashboard</h1>
           <div class="subtitle">Capital Expenditure Monitoring System</div>
@@ -103,7 +109,7 @@
           <div class="d" id="topbarDate"></div>
           <div class="s">Portfolio Status</div>
         </div>
-        <button class="icon-btn" id="logoutBtn" title="Sign out">&#8617;</button>
+        <button type="button" class="icon-btn" id="logoutBtn" title="Sign out" aria-label="Sign out">&#8617;</button>
       </div>
     </header>
 
@@ -111,12 +117,11 @@
       <div class="content-main">
 
 <div class="updated-row">
-          <span id="saveStatus">Cloud changes are saved after confirmation</span>
+          <span id="saveStatus">Cloud-only · writes are confirmed by Supabase</span>
           <span class="sep">&nbsp;·&nbsp;</span>
           <span id="cloudStatus" class="cloud-dot off">● cloud disconnected</span>
           <span class="sep">&nbsp;·&nbsp;</span>
           Last updated: <span id="lastUpdated"></span>
-          <button class="btn btn-sm" id="syncNowBtn" title="Push everything from this browser to the shared cloud now">Sync now</button>
         </div>
 
         <!-- SUMMARY CARDS -->
@@ -746,7 +751,5 @@
     </form>
   </div>
 </div>
-
-<script src="script.js?v=32"></script>
 </body>
 </html>
