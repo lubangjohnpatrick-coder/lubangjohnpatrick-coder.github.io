@@ -1,84 +1,190 @@
 # AACE Project Dashboard
 
-Online-only CAPEX (Capital Expenditure) project dashboard for **Purefoods Hormel Plant 3** using AACE International cost-estimating practice. The app requires a live Supabase cloud connection for login, data access, and project synchronization.
+Online-only CAPEX (Capital Expenditure) project monitoring for **Purefoods Hormel Plant 3**. The browser UI is hosted on GitHub Pages and uses Supabase for authentication, authorization, project storage, audit history, and privileged server-side user administration.
 
-- Static app: no build step, no install. Open `index.html` and it runs when Supabase is configured.
-- Login is cloud-based only. There is no local/offline account fallback.
-- The app starts empty until the Supabase project is connected and the user signs in.
+## Production architecture
 
-## Features
+```text
+GitHub Pages
+  index.html / CSS / browser JavaScript
+                |
+                v
+        Supabase publishable client
+                |
+        +-------+------------------+
+        |                          |
+        v                          v
+   Postgres + RLS            Edge Functions
+   projects                  admin-users
+   user_profiles             gemini (fail-closed by default)
+   activity_trail
+   project counters
+```
 
-- **Executive dashboard** — KPI cards, CAPEX by department, portfolio status donut, management attention, largest allocations, and an **AI status update** generated from live project data
-- **AACE Creation toolkit** — per-project checklist for Justification Support, Scope of Work, and related documentation
-- **Activity Trail** — audit log of creates, edits, and status changes
-- **Project register** — AACE IDs, department, budget, PIC, completion %, workflow stage, approval dates
-- **Role-based permissions** — administrators and user profiles are managed in the cloud-backed Users area
-- **Cloud sync** — shared projects and user data are stored and accessed through Supabase
-- **AI assistant** — Gemini-based summaries, notes, and drafting, using a key stored only in the browser
+The browser never receives a Supabase `service_role` key. Project permissions are enforced by PostgreSQL Row-Level Security, not merely by hidden buttons.
 
-## Run it
+## Key features
 
-1. Open the project in a browser.
-2. Make sure the Supabase project is configured in `supabase-config.js`.
-3. Sign in using the Supabase cloud account created for that project.
-4. The dashboard loads only after a valid cloud session is available.
+- Executive CAPEX dashboard and project register
+- AACE approval workflow and completion tracking
+- Role-based `view`, `add`, and `edit` permissions enforced in Supabase RLS
+- Administrator-only destructive project deletion
+- Collision-safe server-generated project numbers such as `AACE-2026-044`
+- Cloud-persisted, append-only Activity Trail with before/after project snapshots
+- Optimistic concurrency checks so one browser does not silently overwrite a newer edit
+- Server-side Supabase Auth administration for account creation, password changes, and deletion
+- Responsive desktop/tablet/mobile layout
+- AI drafting hooks that no longer store an API key in browser `localStorage`
 
-Optional: in **Settings → AI Assistant**, add your Gemini API key. The key is saved only in the browser's localStorage and is never committed to the repo.
+## Existing deployment upgrade
 
-## Deploy to GitHub (GitHub Pages)
+**Do this before deploying the production-hardening frontend.**
 
-1. Create a repository.
-2. Upload these files to the repo root:
-   - `index.html`
-   - `script.js`
-   - `style.css`
-   - `supabase-lib.js`
-   - `supabase-config.js`
-   - `supabase-schema.sql`
-   - `aace_logo.png`
-3. Open the repo → **Settings → Pages** → Source: **Deploy from a branch** → `main` / root.
-4. The app is served at `https://<your-user>.github.io/<repo>/`.
+1. Open **Supabase → SQL Editor → New query**.
+2. Paste the entire contents of `supabase-production-hardening.sql`.
+3. Run the migration and confirm it completes without errors.
+4. Deploy the Auth administration Edge Function:
 
-The Supabase client is bundled locally in `supabase-lib.js`, and the app uses it in classic script mode.
+```bash
+supabase functions deploy admin-users
+```
 
-## Set up Supabase (once)
+5. Confirm the function has access to Supabase's server-managed `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` environment values. Never copy the service-role value into the frontend.
+6. Keep the `gemini` Edge Function disabled/fail-closed until external AI processing is approved and a server-side provider implementation is added.
+7. Merge/deploy the matching frontend only after the SQL migration is live.
 
-1. Go to [supabase.com](https://supabase.com) → **Start your project**.
-2. In the project: **SQL Editor → New query** → paste the entire contents of `supabase-schema.sql` → **Run**.
-3. **Settings → API**: copy the **Project URL** and the **anon (publishable) key** into `supabase-config.js`.
-4. **Authentication → Providers → Email**: set **Confirm email = OFF** so new accounts can sign in immediately.
-5. Create the Supabase users and sign in through the app. The dashboard performs all login checks through the cloud.
+## New Supabase project setup
 
-## Security notes
+For a brand-new environment, run `supabase-schema.sql` instead of the upgrade migration. It creates the hardened schema directly.
 
-- The anon key is a **publishable** key and is meant to be committed. Access is still limited by the Row-Level Security policies in `supabase-schema.sql`.
-- **Never** commit the `service_role` secret key — it belongs only in the Supabase dashboard server-side environment.
-- The Gemini API key is stored only in the browser's localStorage and is never saved in the repo.
-- All project and user access is expected to go through the Supabase cloud, not the browser's local storage.
+### First Administrator bootstrap
 
-## Troubleshooting
+The schema intentionally has **no first-user self-promotion path**.
 
-**The app says it is online-only and won’t load.**
-Check that `supabase-config.js` is present and valid. It must be loaded as a classic script with no `import` or `export` statements. If it fails to parse, `window.AACE_CLOUD` is never set and the app will refuse to continue.
+1. Create the first Auth user in **Supabase → Authentication → Users**.
+2. Copy that user's UUID.
+3. Insert the first trusted Administrator profile from SQL Editor:
 
-**Cloud sign-in fails.**
-Confirm:
-- the URL and anon key match the live Supabase project,
-- Email authentication is enabled,
-- the username matches the cloud email mapping used by the app,
-- the user exists in Supabase Auth and has a valid password.
+```sql
+insert into public.user_profiles (
+  id, username, display_name, role, department, status, perms
+) values (
+  '<AUTH-USER-UUID>',
+  'your.username',
+  'Your Name',
+  'Administrator',
+  'Plant 3',
+  'Active',
+  '{"view":true,"add":true,"edit":true}'::jsonb
+);
+```
 
-**Logo or asset broken after deployment.**
-Use exact filenames and avoid spaces in the asset names. This project uses `aace_logo.png` intentionally.
+After that, Administrators can provision other dashboard users through the Users screen and the `admin-users` Edge Function.
 
-## Files
+For an administrator-provisioned internal application, disable public Auth sign-up in Supabase after bootstrapping the environment.
+
+## Authorization model
+
+| Operation | Required authorization |
+| --- | --- |
+| Read projects | Active profile + `view`, or Administrator |
+| Add projects | Active profile + `add`, or Administrator |
+| Edit projects | Active profile + `edit`, or Administrator |
+| Delete projects | Administrator only |
+| Read audit trail | `view`, or Administrator |
+| Add manual audit note | `edit`, or Administrator |
+| Alter/delete audit history | Not permitted from browser roles |
+| Manage roles/status/permissions | Administrator |
+| Create/delete Auth users | `admin-users` Edge Function + Administrator caller |
+
+The database policies are the security boundary. Client-side permission checks exist for UX only.
+
+## Project IDs and concurrency
+
+New project numbers are allocated inside PostgreSQL by `create_aace_project(jsonb)`. This avoids two simultaneous browsers producing the same next number and automatically rolls the year based on the **Asia/Manila** calendar year.
+
+Existing project numbers are immutable in the hardened frontend. This preserves stable audit references.
+
+Project edits use the row's `updated_at` revision. If another browser saves a newer version first, the stale editor is rejected and must refresh instead of silently overwriting the other user's work.
+
+## Activity Trail
+
+The Activity Trail is persisted in `public.activity_trail`. A PostgreSQL trigger records project create/update/delete operations regardless of whether a change originated from this webpage or another authorized Supabase client.
+
+Audit rows are append-only for browser users. Manual notes are allowed for editors but previous history cannot be rewritten or removed through normal dashboard permissions.
+
+## AI and data governance
+
+The hardened browser no longer stores a Gemini API key in `localStorage` and no longer calls a provider directly with a browser-owned secret.
+
+`supabase/functions/gemini/index.ts` is intentionally fail-closed. The existing UI falls back to deterministic/offline templates when the server AI gateway is unavailable.
+
+If external AI processing is later approved, implement the provider call **inside that Edge Function**, keep the provider key in Edge Function secrets, authenticate every request, and confirm that sending CAPEX/project information to the external provider complies with company policy.
+
+## Local development
+
+This is currently a classic static application rather than a framework build.
+
+```bash
+python -m http.server 8080
+```
+
+Then open `http://localhost:8080`.
+
+Do not test privileged production Auth changes against a production Supabase environment unless that is intentional.
+
+## Quality checks
+
+The repository includes a GitHub Actions quality workflow and static regression tests.
+
+```bash
+npm run check
+npm test
+```
+
+The checks verify JavaScript syntax and important security invariants such as hardened RLS, server project numbering, audit persistence, and server-side Auth administration.
+
+## Deployment
+
+GitHub Pages deploys the static frontend from `main`. The Pages deployment succeeding only proves that GitHub could publish the files; application regressions are caught by the separate quality workflow.
+
+Recommended release process:
+
+1. Create a feature/hardening branch.
+2. Run SQL/Edge Function migrations in the target Supabase environment when required.
+3. Run the quality workflow.
+4. Review the PR.
+5. Merge to `main`.
+6. Verify GitHub Pages deployment.
+7. Smoke-test sign-in, project CRUD, permissions, audit history, and user administration.
+8. Tag known-good releases so rollback is a Git revert/redeploy instead of an emergency manual edit.
+
+## Security rules
+
+- `supabase-config.js` may contain only the public project URL and publishable/anon key.
+- Never commit `service_role`, provider secrets, passwords, or private company credentials.
+- Do not rely on `display:none`, disabled buttons, or JavaScript `canEdit()` checks for authorization.
+- Keep audit history append-only.
+- Treat project exports/backups as sensitive company data.
+- Review external AI use separately from normal Supabase data processing.
+
+## Important files
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | App structure and views |
-| `script.js` | All app logic — login, permissions, data flow, AI, cloud sync |
-| `style.css` | Theme and design system |
-| `supabase-lib.js` | Bundled Supabase browser client |
-| `supabase-config.js` | Cloud connection settings (URL + anon key) |
-| `supabase-schema.sql` | Supabase tables and Row-Level Security rules |
-| `aace_logo.png` | App logo |
+| `index.html` | Application structure and views |
+| `style.css` | Executive design system and responsive layout |
+| `script.js` | Legacy application logic pending modular refactor |
+| `production-hardening.js` | Security/data-integrity bridge around the legacy application |
+| `dashboard-enhancements.js` | Dashboard drill-down and branding enhancements |
+| `user-management-fix.js` | Secure Users UI integration with server-side Auth administration |
+| `supabase-config.js` | Browser-safe Supabase URL/publishable key and migration loaders |
+| `supabase-schema.sql` | Hardened new-install database schema |
+| `supabase-production-hardening.sql` | Existing-database upgrade migration |
+| `supabase/functions/admin-users/index.ts` | Privileged Supabase Auth administration |
+| `supabase/functions/gemini/index.ts` | Fail-closed server AI gateway placeholder |
+| `aace_logo.png` | Current application logo |
+
+## Known migration debt
+
+`script.js` is still a large classic-script file and `supabase-config.js` temporarily uses parser-time helper loading so fixes can be deployed safely without rewriting the entire application at once. The next architectural phase should move the app to ES modules/services/components and normal `defer`/module imports, then remove the compatibility loaders.

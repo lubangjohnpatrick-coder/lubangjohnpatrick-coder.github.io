@@ -1,0 +1,13 @@
+{
+  "name": "aace-project-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check script.js && node --check production-hardening.js && node --check user-management-fix.js && node --check dashboard-enhancements.js && node --check supabase-config.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
