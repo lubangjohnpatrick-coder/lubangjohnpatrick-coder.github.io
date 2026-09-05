@@ -6,9 +6,6 @@ async function hardenHtml() {
   const path = new URL("../index.html", import.meta.url);
   let html = await readFile(path, "utf8");
 
-  // Remove legacy application script tags so the ordered defer block below is
-  // the single source of truth. This makes parser ordering explicit and removes
-  // the need for document.write in supabase-config.js.
   const scriptNames = [
     "supabase-lib.js",
     "supabase-config.js",
@@ -71,5 +68,31 @@ async function hardenCss() {
   await writeFile(path, css);
 }
 
+async function hardenRuntimeBranding() {
+  const path = new URL("../production-hardening.js", import.meta.url);
+  let js = await readFile(path, "utf8");
+  js = js.replace('favicon.type = "image/png";', 'favicon.type = "image/svg+xml";');
+  js = js.replace('favicon.href = "aace_logo.png?v=40";', 'favicon.href = "favicon.svg?v=40";');
+  js = js.replace(
+    'if (!favicon.parentNode) document.head.appendChild(favicon);',
+    'if (!favicon.parentNode) document.head.appendChild(favicon);\n    document.querySelectorAll(\'link[rel="icon"]\').forEach(node => { if (node !== favicon) node.remove(); });'
+  );
+  await writeFile(path, js);
+}
+
+async function hardenProfileUpdatePolicy(relativePath) {
+  const path = new URL(`../${relativePath}`, import.meta.url);
+  let sql = await readFile(path, "utf8");
+  const replacement = `drop policy if exists "user_profiles_update" on public.user_profiles;\ncreate policy "user_profiles_update" on public.user_profiles\n  for update to authenticated\n  using (public.is_cloud_admin())\n  with check (public.is_cloud_admin());\n\n`;
+  sql = sql.replace(
+    /drop policy if exists "user_profiles_update" on public\.user_profiles;[\s\S]*?(?=drop policy if exists "user_profiles_delete" on public\.user_profiles;)/,
+    replacement
+  );
+  await writeFile(path, sql);
+}
+
 await hardenHtml();
 await hardenCss();
+await hardenRuntimeBranding();
+await hardenProfileUpdatePolicy("supabase-schema.sql");
+await hardenProfileUpdatePolicy("supabase-production-hardening.sql");
