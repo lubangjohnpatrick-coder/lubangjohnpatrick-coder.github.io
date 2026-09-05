@@ -94,18 +94,10 @@ create policy "user_profiles_insert" on public.user_profiles for insert to authe
   with check (public.is_cloud_admin());
 
 drop policy if exists "user_profiles_update" on public.user_profiles;
-create policy "user_profiles_update" on public.user_profiles for update to authenticated
-  using (id = auth.uid() or public.is_cloud_admin())
-  with check (
-    public.is_cloud_admin()
-    or (
-      id = auth.uid()
-      and username = (select p.username from public.user_profiles p where p.id = auth.uid())
-      and role = (select p.role from public.user_profiles p where p.id = auth.uid())
-      and status = (select p.status from public.user_profiles p where p.id = auth.uid())
-      and perms = (select p.perms from public.user_profiles p where p.id = auth.uid())
-    )
-  );
+create policy "user_profiles_update" on public.user_profiles
+  for update to authenticated
+  using (public.is_cloud_admin())
+  with check (public.is_cloud_admin());
 
 drop policy if exists "user_profiles_delete" on public.user_profiles;
 create policy "user_profiles_delete" on public.user_profiles for delete to authenticated

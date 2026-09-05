@@ -309,9 +309,10 @@
   function configureBrandingAndStyles() {
     const favicon = document.querySelector('link[rel="icon"]') || document.createElement("link");
     favicon.rel = "icon";
-    favicon.type = "image/png";
-    favicon.href = "aace_logo.png?v=40";
+    favicon.type = "image/svg+xml";
+    favicon.href = "favicon.svg?v=40";
     if (!favicon.parentNode) document.head.appendChild(favicon);
+    document.querySelectorAll('link[rel="icon"]').forEach(node => { if (node !== favicon) node.remove(); });
 
     const style = document.createElement("style");
     style.textContent = `
